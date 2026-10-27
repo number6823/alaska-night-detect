@@ -1,0 +1,9 @@
+﻿.env
+data/*
+*.mp4
+*.jpg
+*.png
+*.pt
+__pycache__/
+.venv/
+node_modules/
