@@ -12,7 +12,8 @@ REVIEW_QUEUE_CSV = DATA_DIR / "review_queue.csv"
 
 
 # 민철 문서의 규약: run_collector(queries, images_dir, metadata_csv, count_per_query=10)
-# 반환은 images_dir, metadata_csv 둘뿐이다. 도구 1이 올라오면 이 가짜를 바꾼다.
+# 반환은 images_dir, metadata_csv, skipped(실패해 건너뛴 출처 이름 목록, 정상이면 [])이다.
+# 도구 1이 올라오면 이 가짜를 바꾼다.
 def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
     """도구 1(가짜). 검색어로 사진을 모아 images_dir에 저장하고 metadata_csv를 쓴다고 가정한다."""
     print(f"[가짜 도구 1] 수집: 검색어={list(queries)} -> {images_dir}")
@@ -22,6 +23,7 @@ def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
         "images_dir": str(images_dir),
         "metadata_csv": str(metadata_csv),
         "collected": 0,
+        "skipped": [],
     }
 
 
