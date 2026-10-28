@@ -33,8 +33,11 @@ def print_report(report):
             print(f"제거율: {rate:.1f}% (목표 {REMOVAL_RATE_GOAL}% 이상)")
     else:
         print(f"수집: {collected['collected']}장 ({collected['images_dir']})")
+    # labeled는 검수 대기까지 포함한 값이라, 자동 통과는 빼서 구한다.
     print(f"라벨: {labeled['labeled']}장 ({labeled['labels_dir']})")
-    print(f"검수 대기: {labeled['review']}장 ({labeled['review_queue_csv']})")
+    print(f"  자동 통과: {labeled['labeled'] - labeled['review']}장")
+    print(f"  검수 대기: {labeled['review']}장 ({labeled['review_queue_csv']})")
+    print(f"폐기: {labeled['discarded']}장")
     if collected.get("fake") or labeled.get("fake"):
         print("※ 가짜 도구 결과입니다.")
 

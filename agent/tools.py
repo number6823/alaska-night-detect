@@ -27,15 +27,20 @@ def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
 def run_labeler(
     images_dir=IMAGES_DIR, labels_dir=LABELS_DIR, review_queue_csv=REVIEW_QUEUE_CSV
 ):
-    """도구 2(가짜). images_dir의 사진에 YOLO 라벨을 붙여 labels_dir에 저장하고, 신뢰도 낮은 것은 검수 대기열로 뺀다고 가정한다."""
+    """도구 2(가짜). 성진의 run_labeler 반환 모양을 따른다.
+
+    labeled = 라벨 txt를 저장한 장수(자동 통과 + 검수 대기), review = 검수 대기, discarded = 폐기.
+    """
     print(f"[가짜 도구 2] 라벨링: {images_dir} -> {labels_dir}")
     return {
         "fake": True,
         "images_dir": str(images_dir),
         "labels_dir": str(labels_dir),
         "review_queue_csv": str(review_queue_csv),
+        "images": 0,
         "labeled": 0,
         "review": 0,
+        "discarded": 0,
     }
 
 
