@@ -17,7 +17,7 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/im
 
 정확도 측정 (정답 사진을 자동 라벨링한 뒤 정답과 비교, 리포트 `data\accuracy_report.md`):
 ```
-C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5]
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5] [--discard-threshold 0.25] [--model yolo11n.pt]
 ```
 - 정답은 `data\gt100\images\`(사진)와 `data\gt100\labels\`(같은 이름 YOLO txt). 클래스 순서 person=0, bicycle=1
 - 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). 목표 85%
