@@ -30,33 +30,35 @@ def collect_wikimedia(query, count=10,
     images_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
-    for page in pages.values():
-        info = page["imageinfo"][0]
-        ext = ALLOWED_MIME.get(info["mime"])
-        if not ext:
-            continue
-        filename = f"wikimedia_{page['pageid']}.{ext}"
-        path = images_dir / filename
-        if path.exists():  # 다시 돌리거나 검색어끼리 겹쳐도 같은 줄이 두 번 쌓이지 않게
-            continue
-        img = get(info["thumburl"], headers=HEADERS)
-        path.write_bytes(img.content)
+    try:
+        for page in pages.values():
+            info = (page.get("imageinfo") or [{}])[0]
+            ext = ALLOWED_MIME.get(info.get("mime"))
+            if not ext or "thumburl" not in info:  # 정보가 빠진 파일은 건너뜀
+                continue
+            filename = f"wikimedia_{page['pageid']}.{ext}"
+            path = images_dir / filename
+            if path.exists():  # 다시 돌리거나 검색어끼리 겹쳐도 같은 줄이 두 번 쌓이지 않게
+                continue
+            img = get(info["thumburl"], headers=HEADERS)
+            path.write_bytes(img.content)
 
-        meta = info.get("extmetadata", {})
-        rows.append({
-            "filename": filename,
-            "source": "Wikimedia Commons",
-            "source_url": info["descriptionurl"],
-            "author": _strip_html(meta.get("Artist", {}).get("value")),
-            "license": meta.get("LicenseShortName", {}).get("value", ""),
-            "license_url": meta.get("LicenseUrl", {}).get("value", ""),
-            "query": query,
-            "brightness": "",
-            "blur": "",
-            "removed_reason": "",
-        })
-
-    append_rows(metadata_csv, rows)
+            meta = info.get("extmetadata", {})
+            rows.append({
+                "filename": filename,
+                "source": "Wikimedia Commons",
+                "source_url": info.get("descriptionurl", ""),
+                "author": _strip_html(meta.get("Artist", {}).get("value")),
+                "license": meta.get("LicenseShortName", {}).get("value", ""),
+                "license_url": meta.get("LicenseUrl", {}).get("value", ""),
+                "query": query,
+                "brightness": "",
+                "blur": "",
+                "removed_reason": "",
+            })
+    finally:
+        # 중간에 실패해도 이미 저장한 사진의 출처·라이선스는 남긴다
+        append_rows(metadata_csv, rows)
     return rows
 
 
