@@ -15,3 +15,16 @@ def append_rows(metadata_csv, rows):
         if write_header:
             writer.writeheader()
         writer.writerows(rows)
+
+
+def read_rows(metadata_csv):
+    with Path(metadata_csv).open(newline="", encoding="utf-8-sig") as f:
+        return list(csv.DictReader(f))
+
+
+def write_rows(metadata_csv, rows):
+    """점수를 채운 뒤 파일 전체를 다시 쓴다."""
+    with Path(metadata_csv).open("w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=FIELDS)
+        writer.writeheader()
+        writer.writerows(rows)
