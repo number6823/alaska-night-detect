@@ -1,3 +1,3 @@
-from .autolabel import label_images
+from .autolabel import run_labeler
 
-__all__ = ["label_images"]
+__all__ = ["run_labeler"]
