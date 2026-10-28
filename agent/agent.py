@@ -1,12 +1,22 @@
 """에이전트 흐름: 요청 해석 -> 검색어 승인 -> 도구 1 -> 도구 2 -> 보고."""
 
 import sys
+from pathlib import Path
 
 from agent.keywords import UNRESOLVED, build_queries, extract_terms
 from agent.tools import read_metadata_summary, run_collector, run_labeler
 
 # 기획서 성공 지표(중복·불량 제거율)의 제안 목표치. 팀 합의로 바뀔 수 있다.
 REMOVAL_RATE_GOAL = 50
+
+# labeler가 라벨링하는 사진 확장자(labeler/autolabel.py와 같게 유지한다).
+IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+
+
+def has_images(images_dir):
+    """images_dir 폴더가 있고 사진(jpg, jpeg, png)이 한 장 이상 있으면 True."""
+    path = Path(images_dir)
+    return path.is_dir() and any(p.suffix.lower() in IMAGE_EXTS for p in path.iterdir())
 
 
 def ask_confirm(queries):
@@ -32,7 +42,7 @@ def print_report(report):
             rate = (summary["total"] - summary["passed"]) / summary["total"] * 100
             print(f"제거율: {rate:.1f}% (목표 {REMOVAL_RATE_GOAL}% 이상)")
     else:
-        print(f"수집: {collected['collected']}장 ({collected['images_dir']})")
+        print(f"수집: {collected.get('collected', 0)}장 ({collected['images_dir']})")
     # labeled는 검수 대기까지 포함한 값이라, 자동 통과는 빼서 구한다.
     print(f"라벨: {labeled['labeled']}장 ({labeled['labels_dir']})")
     print(f"  자동 통과: {labeled['labeled'] - labeled['review']}장")
@@ -53,7 +63,17 @@ def run(request, confirm=ask_confirm):
         return None
 
     collected = run_collector(queries)
-    labeled = run_labeler(collected["images_dir"])
+    # labeler는 폴더가 없으면 FileNotFoundError로 멈추므로 먼저 확인한다.
+    if not has_images(collected["images_dir"]):
+        print(f"라벨링할 이미지가 없어요: {collected['images_dir']}")
+        return None
+    try:
+        labeled = run_labeler(collected["images_dir"])
+    except ImportError:
+        print(
+            "labeler에 필요한 ultralytics가 없어요: pip install -r labeler/requirements.txt"
+        )
+        return None
     metadata = read_metadata_summary(collected["metadata_csv"])
     report = {
         "queries": queries,
