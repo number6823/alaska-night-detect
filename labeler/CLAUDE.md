@@ -15,6 +15,14 @@
 C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/images] [--labels data/labels] [--review-queue data/review_queue.csv] [--conf-threshold 0.5] [--discard-threshold 0.25] [--model yolo11n.pt]
 ```
 
+정확도 측정 (정답 사진을 자동 라벨링한 뒤 정답과 비교, 리포트 `data\accuracy_report.md`):
+```
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5]
+```
+- 정답은 `data\gt100\images\`(사진)와 `data\gt100\labels\`(같은 이름 YOLO txt). 클래스 순서 person=0, bicycle=1
+- 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). 목표 85%
+- 파일 이름 첫 `_` 앞(`night`, `day`)으로 야간·낮을 따로 집계한다
+
 ## 함수 규약 (agent 호출, 최수창 합의)
 `run_labeler(images_dir="data/images", labels_dir="data/labels", review_queue_csv="data/review_queue.csv", conf_threshold=0.5, discard_threshold=0.25, model="yolo11n.pt") -> dict`
 - 반환: `labels_dir`, `review_queue_csv`, `images`, `labeled`(txt 만든 장수 = 자동 통과 + 검수), `review`(검수 대기 장수), `discarded`(폐기 장수)
