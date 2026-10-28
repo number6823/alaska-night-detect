@@ -52,30 +52,32 @@ def collect_unsplash_lite(query, count=10, images_dir="data/images",
     images_dir.mkdir(parents=True, exist_ok=True)
 
     rows = []
-    for photo in photos:
-        if len(rows) >= count:
-            break
-        if not need <= words[photo["photo_id"]]:
-            continue
-        filename = f"unsplash_{photo['photo_id']}.jpg"
-        path = images_dir / filename
-        if path.exists():
-            continue
-        img = get(photo["photo_image_url"], params={"w": 1280, "fm": "jpg"})
-        path.write_bytes(img.content)
-        name = f"{photo['photographer_first_name']} {photo['photographer_last_name']}".strip()
-        rows.append({
-            "filename": filename,
-            "source": SOURCE,
-            "source_url": photo["photo_url"],
-            "author": name or photo["photographer_username"],
-            "license": LICENSE,
-            "license_url": LICENSE_URL,
-            "query": query,
-            "brightness": "",
-            "blur": "",
-            "removed_reason": "",
-        })
-
-    append_rows(metadata_csv, rows)
+    try:
+        for photo in photos:
+            if len(rows) >= count:
+                break
+            if not need <= words[photo["photo_id"]]:
+                continue
+            filename = f"unsplash_{photo['photo_id']}.jpg"
+            path = images_dir / filename
+            if path.exists():
+                continue
+            img = get(photo["photo_image_url"], params={"w": 1280, "fm": "jpg"})
+            path.write_bytes(img.content)
+            name = f"{photo['photographer_first_name']} {photo['photographer_last_name']}".strip()
+            rows.append({
+                "filename": filename,
+                "source": SOURCE,
+                "source_url": photo["photo_url"],
+                "author": name or photo["photographer_username"],
+                "license": LICENSE,
+                "license_url": LICENSE_URL,
+                "query": query,
+                "brightness": "",
+                "blur": "",
+                "removed_reason": "",
+            })
+    finally:
+        # 중간에 실패해도 이미 저장한 사진의 출처·라이선스는 남긴다
+        append_rows(metadata_csv, rows)
     return rows
