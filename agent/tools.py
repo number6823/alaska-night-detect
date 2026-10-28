@@ -1,4 +1,4 @@
-"""도구 1(수집)과 도구 2(라벨링)를 부르는 자리. 지금은 가짜 함수이고, 실제 도구가 생기면 안쪽만 바꾼다."""
+"""도구 1(수집)과 도구 2(라벨링)를 부르는 자리. 도구 1은 아직 가짜 함수이고, 올라오면 안쪽만 바꾼다."""
 
 import csv
 from pathlib import Path
@@ -11,7 +11,8 @@ METADATA_CSV = DATA_DIR / "metadata.csv"
 REVIEW_QUEUE_CSV = DATA_DIR / "review_queue.csv"
 
 
-# 가정: 함수 이름과 인자는 민철·성진과 아직 합의 전이다. 합의되면 여기를 맞춘다.
+# 민철 문서의 규약: run_collector(queries, images_dir, metadata_csv, count_per_query=10)
+# 반환은 images_dir, metadata_csv 둘뿐이다. 도구 1이 올라오면 이 가짜를 바꾼다.
 def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
     """도구 1(가짜). 검색어로 사진을 모아 images_dir에 저장하고 metadata_csv를 쓴다고 가정한다."""
     print(f"[가짜 도구 1] 수집: 검색어={list(queries)} -> {images_dir}")
@@ -27,21 +28,14 @@ def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
 def run_labeler(
     images_dir=IMAGES_DIR, labels_dir=LABELS_DIR, review_queue_csv=REVIEW_QUEUE_CSV
 ):
-    """도구 2(가짜). 성진의 run_labeler 반환 모양을 따른다.
+    """도구 2. labeler.run_labeler를 부른다.
 
-    labeled = 라벨 txt를 저장한 장수(자동 통과 + 검수 대기), review = 검수 대기, discarded = 폐기.
+    ultralytics가 있어야 해서, 설치 전에도 나머지 단계가 돌도록 호출할 때 불러온다.
+    반환: labels_dir, review_queue_csv, images, labeled(자동 통과 + 검수 대기), review, discarded.
     """
-    print(f"[가짜 도구 2] 라벨링: {images_dir} -> {labels_dir}")
-    return {
-        "fake": True,
-        "images_dir": str(images_dir),
-        "labels_dir": str(labels_dir),
-        "review_queue_csv": str(review_queue_csv),
-        "images": 0,
-        "labeled": 0,
-        "review": 0,
-        "discarded": 0,
-    }
+    from labeler import run_labeler as labeler_run
+
+    return labeler_run(images_dir, labels_dir, review_queue_csv)
 
 
 def read_metadata_summary(metadata_csv=METADATA_CSV):
