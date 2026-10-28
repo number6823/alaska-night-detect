@@ -65,7 +65,13 @@ def run(request, confirm=ask_confirm):
         print("취소했어요.")
         return None
 
-    collected = run_collector(queries)
+    try:
+        collected = run_collector(queries)
+    except ImportError:
+        print(
+            "collector에 필요한 requests가 없어요: pip install -r collector/requirements.txt"
+        )
+        return None
     # labeler는 폴더가 없으면 FileNotFoundError로 멈추므로 먼저 확인한다.
     if not has_images(collected["images_dir"]):
         print(f"라벨링할 이미지가 없어요: {collected['images_dir']}")

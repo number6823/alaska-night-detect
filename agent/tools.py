@@ -1,4 +1,4 @@
-"""도구 1(수집)과 도구 2(라벨링)를 부르는 자리. 도구 1은 아직 가짜 함수이고, 올라오면 안쪽만 바꾼다."""
+"""도구 1(수집)과 도구 2(라벨링)를 부르는 자리."""
 
 import csv
 from pathlib import Path
@@ -11,20 +11,15 @@ METADATA_CSV = DATA_DIR / "metadata.csv"
 REVIEW_QUEUE_CSV = DATA_DIR / "review_queue.csv"
 
 
-# 민철 문서의 규약: run_collector(queries, images_dir, metadata_csv, count_per_query=10)
-# 반환은 images_dir, metadata_csv, skipped(실패해 건너뛴 출처 이름 목록, 정상이면 [])이다.
-# 도구 1이 올라오면 이 가짜를 바꾼다.
 def run_collector(queries, images_dir=IMAGES_DIR, metadata_csv=METADATA_CSV):
-    """도구 1(가짜). 검색어로 사진을 모아 images_dir에 저장하고 metadata_csv를 쓴다고 가정한다."""
-    print(f"[가짜 도구 1] 수집: 검색어={list(queries)} -> {images_dir}")
-    return {
-        "fake": True,
-        "queries": list(queries),
-        "images_dir": str(images_dir),
-        "metadata_csv": str(metadata_csv),
-        "collected": 0,
-        "skipped": [],
-    }
+    """도구 1. collector.run_collector를 부른다.
+
+    requests가 있어야 해서, 설치 전에도 나머지 단계가 돌도록 호출할 때 불러온다.
+    반환: images_dir, metadata_csv, skipped(실패해 건너뛴 출처 이름 목록, 정상이면 []).
+    """
+    from collector import run_collector as collector_run
+
+    return collector_run(list(queries), str(images_dir), str(metadata_csv))
 
 
 def run_labeler(
