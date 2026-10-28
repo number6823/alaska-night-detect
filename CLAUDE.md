@@ -27,6 +27,8 @@
 - 사용 기술: Python, Ultralytics YOLO, OpenCV, imagehash, CLIP(open-clip), 사진 사이트 API
 - 클래스는 person=0, bicycle=1 만 쓴다. 킥보드는 다루지 않는다.
 - 수집은 라이선스를 확인할 수 있는 곳(Wikimedia Commons, Flickr, Pexels, Unsplash)만 쓴다.
+- Unsplash Lite 데이터셋의 사진과 metadata.csv의 Unsplash 줄(설명·작가 이름 포함)은 발표·웹·레포·카톡에 공개하지 않고 data\ 밖으로 내보내지 않는다. 파일로 주고받지도 않는다(각자 내려받는다). 발표와 웹 예시 사진은 Wikimedia 사진만 쓴다.
+- Unsplash 서면 허락을 받기 전에는 Unsplash Lite 사진을 최종 프로젝트 학습에 쓸지 보류한다. (2026-10-28 강민철 약관 확인: 학교 프로젝트가 허락 범위인지 불확실해 메일로 문의 예정)
 - 도구는 최종 프로젝트의 웹 서버가 부를 수 있게 함수 단위로 만든다.
 
 ## 비밀값과 올리지 않을 것
