@@ -43,6 +43,9 @@ def print_report(report):
             print(f"제거율: {rate:.1f}% (목표 {REMOVAL_RATE_GOAL}% 이상)")
     else:
         print(f"수집: {collected.get('collected', 0)}장 ({collected['images_dir']})")
+    # 일부 출처가 실패해 건너뛰었으면, 그 출처 없이 모은 결과라는 것을 알린다.
+    if collected.get("skipped"):
+        print(f"※ 건너뛴 출처: {', '.join(collected['skipped'])}")
     # labeled는 검수 대기까지 포함한 값이라, 자동 통과는 빼서 구한다.
     print(f"라벨: {labeled['labeled']}장 ({labeled['labels_dir']})")
     print(f"  자동 통과: {labeled['labeled'] - labeled['review']}장")
