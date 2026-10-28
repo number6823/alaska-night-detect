@@ -23,6 +23,8 @@ def main() -> None:
     ev.add_argument("--review-queue", default="data/gt100/review_queue.csv", help="정답 사진의 검수 대기 목록 csv")
     ev.add_argument("--report", default="data/accuracy_report.md", help="정확도 리포트")
     ev.add_argument("--iou", type=float, default=0.5, help="맞음으로 볼 IoU 기준")
+    ev.add_argument("--discard-threshold", type=float, default=0.25, help="이 미만 박스는 버림")
+    ev.add_argument("--model", default="yolo11n.pt", help="YOLO 가중치")
     args = parser.parse_args()
 
     if args.command == "run":
@@ -35,7 +37,7 @@ def main() -> None:
             args.model,
         )
     else:
-        run_labeler(args.images, args.pred, args.review_queue)
+        run_labeler(args.images, args.pred, args.review_queue, discard_threshold=args.discard_threshold, model=args.model)
         summary = evaluate(args.pred, args.gt, args.report, args.iou)
     print(json.dumps(summary, ensure_ascii=False))
 
