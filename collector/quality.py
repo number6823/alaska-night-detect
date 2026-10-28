@@ -7,6 +7,10 @@ import numpy as np
 from ._metadata import read_rows, write_rows
 
 BLUR_WIDTH = 640  # 사진 크기가 달라도 흐림 점수를 비교할 수 있게 같은 폭으로 맞춘다
+# 2026-10-28 표본 119장의 점수 낮은 사진을 보고 정했다. 어두움은 8.3점에도 사람이 보여서
+# 새까만 사진만 거르는 값으로 두었다. 흐림은 확실히 못 쓰는 사진의 최고점(18.1) 바로 위다
+DARK_THRESHOLD = 5
+BLUR_THRESHOLD = 20
 TILE_W, TILE_H, COLS = 240, 180, 6
 
 
@@ -22,7 +26,7 @@ def _blur(gray):
 
 
 def measure_quality(images_dir="data/images", metadata_csv="data/metadata.csv",
-                    dark_threshold=None, blur_threshold=None):
+                    dark_threshold=DARK_THRESHOLD, blur_threshold=BLUR_THRESHOLD):
     """아직 걸러지지 않은 사진의 밝기·흐림을 기록한다. 기준값이 None이면 점수만 적고 거르지 않는다."""
     rows = read_rows(metadata_csv)
     for row in rows:
