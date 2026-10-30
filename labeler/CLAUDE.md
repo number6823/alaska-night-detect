@@ -6,12 +6,12 @@
 이미지 폴더를 넣으면 YOLO 라벨과 정확도 리포트가 나온다.
 
 1. YOLO 자동 라벨 (YOLO txt 형식)
-2. 불확실한 사진(사진 점수 상위 `review_top` 비율)은 검수 대기열로 분리
+2. 신뢰도 `conf_threshold` 미만 박스가 있는 사진은 검수 대기열로 분리
 3. 정답 라벨 대비 정확도 측정 → 리포트
 
 ## 실행법
 ```
-C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/images] [--labels data/labels] [--review-queue data/review_queue.csv] [--discard-threshold 0.25] [--model yolo11n.pt] [--review-top 0.4]
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/images] [--labels data/labels] [--review-queue data/review_queue.csv] [--conf-threshold 0.7] [--discard-threshold 0.25] [--model yolo11n.pt]
 ```
 
 정확도 측정 (정답 사진을 자동 라벨링한 뒤 정답과 비교, 리포트 `data\accuracy_report.md`):
@@ -23,12 +23,13 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 - 파일 이름 첫 `_` 앞(`night`, `day`)으로 야간·낮을 따로 집계한다
 
 ## 함수 규약 (agent 호출, 최수창 합의)
-`run_labeler(images_dir="data/images", labels_dir="data/labels", review_queue_csv="data/review_queue.csv", discard_threshold=0.25, model="yolo11n.pt", review_top=0.4) -> dict`
-- 반환: `labels_dir`, `review_queue_csv`, `images`, `labeled`(txt 만든 장수 = 자동 통과 + 검수), `review`(검수 대기 장수), `discarded`(폐기 장수), `review_ratio`(`review` / `labeled`, 소수 4자리)
+`run_labeler(images_dir="data/images", labels_dir="data/labels", review_queue_csv="data/review_queue.csv", conf_threshold=0.7, discard_threshold=0.25, model="yolo11n.pt") -> dict`
+- 반환: `labels_dir`, `review_queue_csv`, `images`, `labeled`(txt 만든 장수 = 자동 통과 + 검수), `review`(검수 대기 장수), `discarded`(폐기 장수), `review_ratio`(`review` / `labeled`, 소수 4자리), `boxes`(라벨이 만들어진 사진의 전체 박스 수), `confirmed_boxes`(`conf_threshold` 이상 박스 수, 검수 사진 안 박스 포함)
 - 예측: `imgsz=640`, NMS `iou=0.5`, `conf=discard_threshold`
-- 이미지 단위 분류: `discard_threshold` 이상 박스가 없으면 폐기(txt 없음). 나머지는 사진 점수가 높은 순으로 `labeled × review_top`(내림)장을 검수 대기, 나머지는 자동 통과
-- 박스 점수 = `(1 - |2·conf - 1|)²` (conf 0.5일 때 1, 0·1에 가까우면 0), 사진 점수 = 박스 점수의 합
-- `review_queue.csv` 열: `filename,status,boxes,score,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함). `review` 줄이 사진 점수 높은 순으로 먼저, `discard` 줄은 뒤에 (`score`·`min_conf` 빈칸)
+- 이미지 단위 분류: 박스가 모두 `conf_threshold` 이상이면 자동 통과, 미만 박스가 하나라도 있으면 검수 대기, `discard_threshold` 이상 박스가 없으면 폐기(txt 없음)
+- `conf_threshold=0.7`은 gt100에서 자동 확정 박스 정답률 90% 이상인 가장 작은 값으로 골랐다(92.8%, 확정 박스 222/547). 같은 세트에서 골라 낙관적일 수 있다
+- Sum 상위 X%는 시험했지만 무작위(73.6%)보다 낮은 68.0%여서 쓰지 않는다
+- `review_queue.csv` 열: `filename,status,boxes,low_conf_boxes,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함)
 
 ## 라이브러리
 - 사용: `ultralytics`(YOLO)
