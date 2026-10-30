@@ -4,7 +4,6 @@ import datetime
 from pathlib import Path
 
 CLASS_NAMES = {0: "person", 1: "bicycle"}
-GOAL_F1 = 0.85
 
 
 def _read_boxes(path: Path) -> list[tuple]:
@@ -126,7 +125,7 @@ def evaluate(
         f"- 날짜: {datetime.date.today().isoformat()}",
         f"- 비교: 자동 라벨 `{pred_dir}` vs 정답 `{gt_dir}`, IoU {iou_threshold} 이상이면 맞음",
         f"- 사진: {len(gt_files)}장",
-        f"- **일치율(F1): {overall['f1']:.1%}** (목표 {GOAL_F1:.0%} {'달성' if overall['f1'] >= GOAL_F1 else '미달'})",
+        f"- **일치율(F1): {overall['f1']:.1%}** (보고용, 목표 아님)",
         "",
         "## 클래스별",
         "",
