@@ -6,6 +6,7 @@ import requests
 from ._metadata import read_rows
 from .dedup import find_duplicates
 from .quality import measure_quality
+from .relevance import filter_irrelevant
 from .unsplash_lite import collect_unsplash_lite
 from .wikimedia import collect_wikimedia
 
@@ -41,5 +42,6 @@ def run_collector(queries, images_dir="data/images", metadata_csv="data/metadata
     if Path(metadata_csv).exists():  # 모든 출처가 처음부터 실패하면 파일이 없다
         measure_quality(images_dir, metadata_csv)
         find_duplicates(images_dir, metadata_csv)
+        filter_irrelevant(images_dir, metadata_csv)
         _move_removed(images_dir, metadata_csv)
     return {"images_dir": images_dir, "metadata_csv": metadata_csv, "skipped": skipped}
