@@ -28,7 +28,8 @@ def run_labeler(
     """도구 2. labeler.run_labeler를 부른다.
 
     ultralytics가 있어야 해서, 설치 전에도 나머지 단계가 돌도록 호출할 때 불러온다.
-    반환: labels_dir, review_queue_csv, images, labeled(자동 통과 + 검수 대기), review, discarded.
+    반환: labels_dir, review_queue_csv, images, labeled(자동 통과 + 검수 대기), review(사진 점수 상위 비율만큼),
+    discarded, review_ratio(review / labeled).
     """
     from labeler import run_labeler as labeler_run
 
