@@ -1,7 +1,7 @@
 import argparse
 import json
 
-from .autolabel import run_labeler
+from .autolabel import predict_scored, run_labeler
 from .evaluate import evaluate
 
 
@@ -38,7 +38,8 @@ def main() -> None:
         )
     else:
         run_labeler(args.images, args.pred, args.review_queue, discard_threshold=args.discard_threshold, model=args.model)
-        summary = evaluate(args.pred, args.gt, args.report, args.iou)
+        scored = predict_scored(args.images, args.model)
+        summary = evaluate(args.pred, args.gt, args.report, args.iou, scored, args.discard_threshold)
     print(json.dumps(summary, ensure_ascii=False))
 
 

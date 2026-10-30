@@ -14,6 +14,25 @@ NMS_IOU = 0.5
 REVIEW_COLUMNS = ["filename", "status", "boxes", "low_conf_boxes", "min_conf"]
 
 
+def _predict(yolo: YOLO, path: Path, conf: float):
+    return yolo.predict(str(path), classes=CLASS_IDS, conf=conf, imgsz=IMGSZ, iou=NMS_IOU, verbose=False)[0]
+
+
+def predict_scored(images_dir: str | Path, model: str = "yolo11n.pt", conf: float = 0.001) -> dict[str, list[tuple]]:
+    """평가용으로 사진별 (cls, cx, cy, w, h, conf) 목록을 돌려준다. run_labeler와 같은 예측 설정을 쓴다.
+
+    라벨 txt에는 conf를 넣지 않으므로(학습용 YOLO 형식 유지) AP50·오류 종류를 셀 때 따로 예측한다.
+    """
+    yolo = YOLO(model)
+    scored = {}
+    for path in sorted(p for p in Path(images_dir).iterdir() if p.suffix.lower() in IMAGE_EXTS):
+        r = _predict(yolo, path, conf)
+        scored[path.stem] = [
+            (int(c), *box, s) for c, box, s in zip(r.boxes.cls.tolist(), r.boxes.xywhn.tolist(), r.boxes.conf.tolist())
+        ]
+    return scored
+
+
 def run_labeler(
     images_dir: str | Path = "data/images",
     labels_dir: str | Path = "data/labels",
@@ -43,9 +62,7 @@ def run_labeler(
     confirmed_boxes = 0
 
     for path in images:
-        result = yolo.predict(
-            str(path), classes=CLASS_IDS, conf=discard_threshold, imgsz=IMGSZ, iou=NMS_IOU, verbose=False
-        )[0]
+        result = _predict(yolo, path, discard_threshold)
         label_path = labels_dir / f"{path.stem}.txt"
         confs = result.boxes.conf.tolist()
 
