@@ -1,4 +1,5 @@
-"""사진의 밝기와 흐림을 재서 metadata.csv에 적고, 기준값이 있으면 못 쓰는 사진에 removed_reason을 적는다."""
+"""사진의 밝기와 흐림을 재서 metadata.csv에 적고, 기준값이 있으면 못 쓰는 사진에 removed_reason을 적는다.
+읽을 수 없는 파일에는 unreadable을 적는다."""
 from pathlib import Path
 
 import cv2
@@ -35,7 +36,9 @@ def measure_quality(images_dir="data/images", metadata_csv="data/metadata.csv",
             continue
         gray = _read(path)
         if gray is None:
+            # 깨진 파일이 다음 단계(PIL)에서 예외를 내 run_collector가 멈추지 않게, 여기서 거른다
             print(f"[읽기 실패] {row['filename']}")
+            row["removed_reason"] = "unreadable"
             continue
         row["brightness"] = f"{gray.mean():.1f}"
         if dark_threshold is not None and gray.mean() < dark_threshold:

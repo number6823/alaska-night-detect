@@ -40,7 +40,11 @@ def find_duplicates(images_dir="data/images", metadata_csv="data/metadata.csv",
         if md5 in seen_md5:
             row["removed_reason"] = "duplicate"
             continue
-        h = _hashes(path)
+        try:
+            h = _hashes(path)
+        except OSError:  # OpenCV는 읽었지만 PIL은 못 읽는 파일이 있을 수 있다
+            row["removed_reason"] = "unreadable"
+            continue
         if any(_distance(h, k) <= dup_threshold for k in kept):
             row["removed_reason"] = "near_duplicate"
             continue
