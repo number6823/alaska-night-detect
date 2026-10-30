@@ -22,6 +22,13 @@ def read_rows(metadata_csv):
         return list(csv.DictReader(f))
 
 
+def known_filenames(metadata_csv):
+    """이미 기록된 파일 이름. 걸러져 removed/로 옮긴 사진을 다시 받지 않게 한다."""
+    if not Path(metadata_csv).exists():
+        return set()
+    return {r["filename"] for r in read_rows(metadata_csv)}
+
+
 def write_rows(metadata_csv, rows):
     """점수를 채운 뒤 파일 전체를 다시 쓴다."""
     with Path(metadata_csv).open("w", newline="", encoding="utf-8-sig") as f:

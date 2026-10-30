@@ -1,2 +1,4 @@
 requests
 opencv-python
+imagehash
+open-clip-torch
