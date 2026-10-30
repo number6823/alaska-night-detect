@@ -12,9 +12,9 @@ def main() -> None:
     run.add_argument("--images", default="data/images", help="입력 이미지 폴더")
     run.add_argument("--labels", default="data/labels", help="YOLO .txt 저장 폴더")
     run.add_argument("--review-queue", default="data/review_queue.csv", help="검수 대기 목록 csv")
-    run.add_argument("--conf-threshold", type=float, default=0.5, help="자동 통과 신뢰도")
     run.add_argument("--discard-threshold", type=float, default=0.25, help="이 미만 박스는 버림")
     run.add_argument("--model", default="yolo11n.pt", help="YOLO 가중치")
+    run.add_argument("--review-top", type=float, default=0.4, help="사진 점수 상위 몇 비율을 검수할지")
 
     ev = sub.add_parser("eval", help="정답 사진을 자동 라벨링한 뒤 정답 라벨과 비교한다")
     ev.add_argument("--images", default="data/gt100/images", help="정답 사진 폴더")
@@ -32,9 +32,9 @@ def main() -> None:
             args.images,
             args.labels,
             args.review_queue,
-            args.conf_threshold,
             args.discard_threshold,
             args.model,
+            args.review_top,
         )
     else:
         run_labeler(args.images, args.pred, args.review_queue, discard_threshold=args.discard_threshold, model=args.model)
