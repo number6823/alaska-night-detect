@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 
 from ._http import get
-from ._metadata import append_rows
+from ._metadata import append_rows, known_filenames
 
 API_URL = "https://commons.wikimedia.org/w/api.php"
 # Wikimedia는 연락처가 담긴 User-Agent를 요구한다
@@ -29,6 +29,7 @@ def collect_wikimedia(query, count=10,
     images_dir = Path(images_dir)
     images_dir.mkdir(parents=True, exist_ok=True)
 
+    known = known_filenames(metadata_csv)
     rows = []
     try:
         for page in pages.values():
@@ -38,7 +39,8 @@ def collect_wikimedia(query, count=10,
                 continue
             filename = f"wikimedia_{page['pageid']}.{ext}"
             path = images_dir / filename
-            if path.exists():  # 다시 돌리거나 검색어끼리 겹쳐도 같은 줄이 두 번 쌓이지 않게
+            # 다시 돌리거나 검색어끼리 겹쳐도, removed/로 옮긴 사진이어도 같은 줄이 두 번 쌓이지 않게
+            if path.exists() or filename in known:
                 continue
             img = get(info["thumburl"], headers=HEADERS)
             path.write_bytes(img.content)

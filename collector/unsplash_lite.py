@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from ._http import get
-from ._metadata import append_rows
+from ._metadata import append_rows, known_filenames
 
 SOURCE = "Unsplash Lite Dataset"
 LICENSE = "Unsplash Dataset Terms (Lite, 비공개)"
@@ -51,6 +51,7 @@ def collect_unsplash_lite(query, count=10, images_dir="data/images",
     images_dir = Path(images_dir)
     images_dir.mkdir(parents=True, exist_ok=True)
 
+    known = known_filenames(metadata_csv)
     rows = []
     try:
         for photo in photos:
@@ -60,7 +61,7 @@ def collect_unsplash_lite(query, count=10, images_dir="data/images",
                 continue
             filename = f"unsplash_{photo['photo_id']}.jpg"
             path = images_dir / filename
-            if path.exists():
+            if path.exists() or filename in known:  # removed/로 옮긴 사진을 다시 받지 않게
                 continue
             img = get(photo["photo_image_url"], params={"w": 1280, "fm": "jpg"})
             path.write_bytes(img.content)
