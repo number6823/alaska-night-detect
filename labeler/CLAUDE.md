@@ -5,10 +5,9 @@
 ## 하는 일
 이미지 폴더를 넣으면 YOLO 라벨과 정확도 리포트가 나온다.
 
-1. 야간 밝기 보정
-2. YOLO 자동 라벨 (YOLO txt 형식)
-3. 신뢰도 낮은 이미지는 검수 대기열로 분리
-4. 정답 라벨 대비 정확도 측정 → 리포트
+1. YOLO 자동 라벨 (YOLO txt 형식)
+2. 신뢰도 낮은 이미지는 검수 대기열로 분리
+3. 정답 라벨 대비 정확도 측정 → 리포트
 
 ## 실행법
 ```
@@ -20,7 +19,7 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/im
 C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5] [--discard-threshold 0.25] [--model yolo11n.pt]
 ```
 - 정답은 `data\gt100\images\`(사진)와 `data\gt100\labels\`(같은 이름 YOLO txt). 클래스 순서 person=0, bicycle=1
-- 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). 목표 85%
+- 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). F1은 보고만 하고 목표로 삼지 않는다. 목표는 검수할 사진 수와 고칠 박스 수 줄이기
 - 파일 이름 첫 `_` 앞(`night`, `day`)으로 야간·낮을 따로 집계한다
 
 ## 함수 규약 (agent 호출, 최수창 합의)
@@ -30,12 +29,12 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 - `review_queue.csv` 열: `filename,status,boxes,low_conf_boxes,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함)
 
 ## 라이브러리
-- 사용: `ultralytics`(YOLO), `opencv-python`(밝기 보정)
-- 안 쓰기로 한 것: 미정
+- 사용: `ultralytics`(YOLO)
+- 안 쓰기로 한 것: 야간 밝기 보정, `sahi`(조각 추론). gt100 실험에서 밝기 보정은 F1 변화가 없었고, 조각 추론은 F1이 떨어졌다(yolo11n 0.602 → 0.397)
 
 ## 규칙
 - `labeler/` 밖은 수정하지 않는다. 공용 파일(루트 `CLAUDE.md`, `.gitignore`)은 팀장(최수창)이 관리한다.
-- 입력은 collector의 `data\metadata.csv`. 필수 열은 `filename`(확장자 포함, `data\images\` 안 이름과 동일), 나머지는 강민철 제안서를 따른다: `filename, source, source_url, author, license, license_url, query, brightness, removed_reason`
+- 입력은 collector가 채운 `data\images\` 폴더다. labeler는 `data\metadata.csv`를 읽지 않는다. metadata.csv 열은 `collector/_metadata.py`를 따른다: `filename, source, source_url, author, license, license_url, query, brightness, blur, removed_reason` (`filename`은 확장자 포함, `data\images\` 안 이름과 동일)
 - `data\images\`에는 최종 이미지만 둔다. labeler가 폴더를 통째로 읽는다.
 - agent가 호출하는 CLI 인자·출력 경로를 바꿀 때는 최수창과 먼저 합의한다.
 - 모델 가중치(`*.pt`)와 이미지는 커밋하지 않는다.
