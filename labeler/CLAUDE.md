@@ -16,12 +16,12 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler run [--images data/im
 
 정확도 측정 (정답 사진을 자동 라벨링한 뒤 정답과 비교, 리포트 `data\accuracy_report.md`):
 ```
-C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5] [--discard-threshold 0.25] [--model yolo11n.pt]
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/gt100/images] [--gt data/gt100/labels] [--pred data/gt100/pred] [--iou 0.5] [--conf-threshold 0.7] [--discard-threshold 0.25] [--model yolo11n.pt]
 ```
 - 정답은 `data\gt100\images\`(사진)와 `data\gt100\labels\`(같은 이름 YOLO txt). 클래스 순서 person=0, bicycle=1
 - 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). F1은 보고만 하고 목표로 삼지 않는다. 목표는 검수할 사진 수와 고칠 박스 수 줄이기
 - 파일 이름 첫 `_` 앞(`night`, `day`)으로 야간·낮을 따로 집계한다
-- 리포트에 AP50(표준 방식 conf 0.001부터 / labeler 출력 conf 0.25 이상)과 오류 종류 개수(TIDE: Cls, Loc, Both, Dupe, Bkg, Miss)를 함께 낸다. 라벨 txt에는 conf가 없어서 eval이 conf 0.001로 한 번 더 예측한다(`predict_scored`)
+- 리포트에 자동 확정 박스 정답률(conf 0.7 이상 박스 중 IoU 0.5로 맞은 비율)과 확정 박스 수·비율, AP50(표준 방식 conf 0.001부터 / labeler 출력 conf 0.25 이상)과 오류 종류 개수(TIDE: Cls, Loc, Both, Dupe, Bkg, Miss)를 함께 낸다. 라벨 txt에는 conf가 없어서 eval이 conf 0.001로 한 번 더 예측한다(`predict_scored`)
 
 ## 함수 규약 (agent 호출, 최수창 합의)
 `run_labeler(images_dir="data/images", labels_dir="data/labels", review_queue_csv="data/review_queue.csv", conf_threshold=0.7, discard_threshold=0.25, model="yolo11n.pt") -> dict`

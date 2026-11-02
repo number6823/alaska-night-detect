@@ -23,6 +23,7 @@ def main() -> None:
     ev.add_argument("--review-queue", default="data/gt100/review_queue.csv", help="정답 사진의 검수 대기 목록 csv")
     ev.add_argument("--report", default="data/accuracy_report.md", help="정확도 리포트")
     ev.add_argument("--iou", type=float, default=0.5, help="맞음으로 볼 IoU 기준")
+    ev.add_argument("--conf-threshold", type=float, default=0.7, help="이 이상 박스는 자동 확정, 미만 박스가 있으면 검수")
     ev.add_argument("--discard-threshold", type=float, default=0.25, help="이 미만 박스는 버림")
     ev.add_argument("--model", default="yolo11n.pt", help="YOLO 가중치")
     args = parser.parse_args()
@@ -37,9 +38,9 @@ def main() -> None:
             args.model,
         )
     else:
-        run_labeler(args.images, args.pred, args.review_queue, discard_threshold=args.discard_threshold, model=args.model)
+        run_labeler(args.images, args.pred, args.review_queue, args.conf_threshold, args.discard_threshold, args.model)
         scored = predict_scored(args.images, args.model)
-        summary = evaluate(args.pred, args.gt, args.report, args.iou, scored, args.discard_threshold)
+        summary = evaluate(args.pred, args.gt, args.report, args.iou, scored, args.discard_threshold, args.conf_threshold)
     print(json.dumps(summary, ensure_ascii=False))
 
 

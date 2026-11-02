@@ -128,6 +128,26 @@ def _ap50(scored: dict, gts: dict, iou_threshold: float, min_conf: float) -> dic
     return {**per_class, "mAP50": round(sum(per_class.values()) / len(per_class), 4)}
 
 
+def _confirmed(scored: dict, gts: dict, iou_threshold: float, discard_threshold: float, conf_threshold: float) -> dict:
+    """conf_threshold 이상 박스(자동 확정)가 정답과 맞는 비율과 전체 박스 중 비율을 구한다. 검수 사진 안의 박스도 포함한다."""
+    tp = fp = total = 0
+    for stem, g in gts.items():
+        preds = [b for b in scored.get(stem, []) if b[5] >= discard_threshold]
+        total += len(preds)
+        counts = _match([b for b in preds if b[5] >= conf_threshold], g, iou_threshold)
+        tp += sum(c[0] for c in counts.values())
+        fp += sum(c[1] for c in counts.values())
+    boxes = tp + fp
+    return {
+        "boxes": boxes,
+        "tp": tp,
+        "fp": fp,
+        "precision": round(tp / boxes, 4) if boxes else 0.0,
+        "total_boxes": total,
+        "ratio": round(boxes / total, 4) if total else 0.0,
+    }
+
+
 def _scores(tp: int, fp: int, fn: int) -> dict:
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
@@ -158,12 +178,13 @@ def evaluate(
     iou_threshold: float = 0.5,
     scored: dict | None = None,
     discard_threshold: float = 0.25,
+    conf_threshold: float = 0.7,
 ) -> dict:
     """자동 라벨(pred_dir)을 정답 라벨(gt_dir)과 비교해 정확도를 계산하고 리포트를 쓴다.
 
     정답 txt가 있는 사진만 평가한다. 예측 txt가 없으면(폐기된 사진) 정답 박스는 모두 놓친 것으로 센다.
     일치율 = 전체 F1 (잘못 그린 박스와 놓친 박스를 둘 다 반영).
-    scored(사진별 (cls, cx, cy, w, h, conf), autolabel.predict_scored)를 주면 AP50과 오류 종류 개수도 낸다.
+    scored(사진별 (cls, cx, cy, w, h, conf), autolabel.predict_scored)를 주면 자동 확정 박스 정답률, AP50, 오류 종류 개수도 낸다.
     오류 종류는 labeler가 실제로 내보내는 discard_threshold 이상 박스로 센다.
     """
     pred_dir = Path(pred_dir)
@@ -195,10 +216,11 @@ def evaluate(
     per_group = {name: _scores(*c) for name, c in sorted(group_counts.items())}
     worst = [(e, stem) for e, stem in sorted(per_image, reverse=True) if e > 0][:10]
 
-    ap50 = ap50_labeler = errors = None
+    confirmed = ap50 = ap50_labeler = errors = None
     extra = []
     if scored is not None:
         gts = {p.stem: _read_boxes(p) for p in gt_files}
+        confirmed = _confirmed(scored, gts, iou_threshold, discard_threshold, conf_threshold)
         ap50 = _ap50(scored, gts, iou_threshold, 0.0)
         ap50_labeler = _ap50(scored, gts, iou_threshold, discard_threshold)
         errors = dict.fromkeys(["TP", *ERROR_TYPES], 0)
@@ -208,6 +230,11 @@ def evaluate(
                 errors[kind] += 1
             errors["Miss"] += miss
         extra = [
+            f"## 자동 확정 박스 (conf {conf_threshold} 이상, 검수 사진 안 박스 포함)",
+            "",
+            f"- 정답률: **{confirmed['precision']:.1%}** ({confirmed['tp']} / {confirmed['boxes']}, IoU {iou_threshold} 기준, 잘못 그림 {confirmed['fp']}개)",
+            f"- 전체 박스 중 비율: {confirmed['ratio']:.1%} ({confirmed['boxes']} / {confirmed['total_boxes']}, 전체는 conf {discard_threshold} 이상 박스)",
+            "",
             "## AP50",
             "",
             "| 기준 | person | bicycle | mAP50 |",
@@ -264,6 +291,7 @@ def evaluate(
         **overall,
         "per_class": per_class,
         "per_group": per_group,
+        "confirmed": confirmed,
         "ap50": ap50,
         "ap50_labeler": ap50_labeler,
         "errors": errors,
