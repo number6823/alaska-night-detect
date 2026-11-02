@@ -1,4 +1,4 @@
-"""미리 내려받은 Unsplash Lite 데이터셋에서 사진을 골라 data/images/ 에 저장하고 출처를 metadata.csv 에 기록한다.
+"""로컬에 있는 Unsplash Lite 목록(TSV)에서 사진을 골라 인터넷으로 받아 data/images/ 에 저장하고 출처를 metadata.csv 에 기록한다.
 약관(3.A)상 이 사진과 메타데이터는 data/ 밖으로 내보내지 않는다(레포·슬라이드·시연 영상 금지)."""
 import csv
 import re

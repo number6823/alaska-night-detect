@@ -60,7 +60,7 @@ def _tile(path, label):
     img = cv2.resize(img, (int(img.shape[1] * scale), int(img.shape[0] * scale)))
     tile = np.zeros((TILE_H, TILE_W, 3), np.uint8)
     tile[:img.shape[0], :img.shape[1]] = img
-    # 어두운 사진 위에서도 보이게 검은 테두리를 먼저 그린다
+    # 밝은 사진 위에서도 노란 글자가 보이게 검은 테두리를 먼저 그린다
     for color, thick in (((0, 0, 0), 4), ((0, 255, 255), 1)):
         cv2.putText(tile, label, (5, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, thick)
     return tile

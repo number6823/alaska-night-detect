@@ -1,4 +1,4 @@
-"""CLIP 영점 분류로 도표·그림·지도·포스터는 not_photo, 낮·실내 사진은 not_night를 removed_reason에 적는다.
+"""CLIP zero-shot 분류로 도표·그림·지도·포스터는 not_photo, 낮·실내 사진은 not_night를 removed_reason에 적는다.
 사람·자전거가 없는 사진은 여기서 거르지 않는다. 도구 2가 YOLO로 폐기해서 YOLO를 두 번 돌리지 않는다."""
 from functools import lru_cache
 from pathlib import Path

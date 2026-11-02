@@ -35,7 +35,7 @@ def collect_wikimedia(query, count=10,
         for page in pages.values():
             info = (page.get("imageinfo") or [{}])[0]
             ext = ALLOWED_MIME.get(info.get("mime"))
-            if not ext or "thumburl" not in info:  # 정보가 빠진 파일은 건너뜀
+            if not ext or "thumburl" not in info:  # jpg, png가 아니거나 썸네일 주소가 없는 파일은 건너뜀
                 continue
             filename = f"wikimedia_{page['pageid']}.{ext}"
             path = images_dir / filename
