@@ -6,9 +6,6 @@ from pathlib import Path
 from agent.keywords import UNRESOLVED, build_queries, extract_terms
 from agent.tools import read_metadata_summary, run_collector, run_labeler
 
-# 기획서 성공 지표(중복·불량 제거율)의 제안 목표치. 팀 합의로 바뀔 수 있다.
-REMOVAL_RATE_GOAL = 50
-
 # labeler가 라벨링하는 사진 확장자(labeler/autolabel.py와 같게 유지한다).
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
@@ -40,7 +37,8 @@ def print_report(report):
             print(f"  제거 {reason}: {count}장")
         if summary["total"]:
             rate = (summary["total"] - summary["passed"]) / summary["total"] * 100
-            print(f"제거율: {rate:.1f}% (목표 {REMOVAL_RATE_GOAL}% 이상)")
+            # 잘못 버린 비율(오제거율)은 걸러낸 사진을 사람이 눈으로 확인해 따로 잰다.
+            print(f"걸러낸 비율: {rate:.1f}%")
     else:
         print(f"수집: {collected.get('collected', 0)}장 ({collected['images_dir']})")
     # 일부 출처가 실패해 건너뛰었으면, 그 출처 없이 모은 결과라는 것을 알린다.
@@ -50,7 +48,17 @@ def print_report(report):
     print(f"라벨: {labeled['labeled']}장 ({labeled['labels_dir']})")
     print(f"  자동 통과: {labeled['labeled'] - labeled['review']}장")
     print(f"  검수 대기: {labeled['review']}장 ({labeled['review_queue_csv']})")
+    if "review_ratio" in labeled:
+        print(
+            f"  검수 사진 비율: {labeled['review_ratio'] * 100:.1f}% (보고만, 목표 아님)"
+        )
     print(f"폐기: {labeled['discarded']}장")
+    # 확신이 높은 박스는 자동 확정이라 검수할 때 건너뛴다.
+    if labeled.get("boxes"):
+        confirmed = labeled["confirmed_boxes"]
+        print(
+            f"박스: {labeled['boxes']}개 중 {confirmed}개({confirmed / labeled['boxes'] * 100:.1f}%)는 자동 확정"
+        )
     if collected.get("fake") or labeled.get("fake"):
         print("※ 가짜 도구 결과입니다.")
 
