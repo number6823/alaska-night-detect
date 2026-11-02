@@ -26,9 +26,9 @@
 - 말 해석은 규칙 기반 키워드 사전으로 한다. (예: 야간→night, 자전거→bicycle)
 - 사용 기술: Python, Ultralytics YOLO, OpenCV, imagehash, CLIP(open-clip), 사진 사이트 API
 - 클래스는 person=0, bicycle=1 만 쓴다. 킥보드는 다루지 않는다.
-- 수집은 라이선스를 확인할 수 있는 곳(Wikimedia Commons, Flickr, Pexels, Unsplash)만 쓴다.
+- 수집은 라이선스를 확인할 수 있는 곳(Wikimedia Commons, Unsplash Lite)만 쓴다. Flickr(API 유료)와 Pexels(키 발급 중단)는 쓰지 않는다.
 - Unsplash Lite 데이터셋의 사진과 metadata.csv의 Unsplash 줄(설명·작가 이름 포함)은 발표·웹·레포·카톡에 공개하지 않고 data\ 밖으로 내보내지 않는다. 파일로 주고받지도 않는다(각자 내려받는다). 발표와 웹 예시 사진은 Wikimedia 사진만 쓴다.
-- 2026-11-02 Unsplash에서 교육용 허락을 받았다("Your use case is acceptable; we support all educational use cases."). Unsplash Lite 사진을 최종 프로젝트 학습에 쓸 수 있다. 위의 공개 금지 규칙은 그대로다.
+- 2026-11-02 Unsplash에서 교육용 허락을 받았다("Your use case is acceptable; we support all educational use cases."). Unsplash Lite 사진을 최종 프로젝트 학습에 쓸 수 있다. 위의 공개 금지 규칙은 그대로다. 이 허락은 메일에 적은 비상업 교육 용도 기준이다. 상업 이용 등 메일에 적지 않은 용도는 다시 문의한다.
 - 도구는 최종 프로젝트의 웹 서버가 부를 수 있게 함수 단위로 만든다.
 
 ## 비밀값과 올리지 않을 것
