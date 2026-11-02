@@ -36,4 +36,16 @@
 - 영상, 이미지, 모델 파일(*.pt)은 올리지 않는다.
 
 ## 실행 방법
-(코드가 생기면 채운다. 11/3 점검 때 /init 으로 보충한다.)
+모든 명령은 레포 맨 위 폴더에서 실행한다. 레포 경로가 너무 길면 설치가 실패하니 짧은 경로에 둔다.
+
+- 도구 1 (collector)
+  - 설치: `pip install -r collector/requirements.txt`
+  - 실행: `python -c "from collector import run_collector; print(run_collector(['night bicycle']))"`
+  - 결과: `data/images`(남은 사진), `data/removed`(걸러진 사진), `data/metadata.csv`(출처·제거 사유)
+  - 처음 실행 때 CLIP 가중치 약 578MB를 받으므로 인터넷이 필요하다.
+  - Unsplash Lite는 약관을 읽고 각자 https://unsplash.com/data/lite/latest 에서 zip을 받아 `data/unsplash_lite`에 푼다. 없으면 Wikimedia만 쓰고 `[건너뜀]`이 나온다.
+- 도구 2 (labeler)
+  - 설치: `pip install -r labeler/requirements.txt`
+  - 실행: `python -m labeler run` (`data/images`를 읽는다. 처음 실행 때 `yolo11n.pt`를 자동으로 받는다.)
+  - 결과: 라벨은 `data/labels/*.txt`, 검수·폐기 목록은 `data/review_queue.csv`
+- 에이전트 (agent): 위 두 도구를 설치한 뒤 `python -m agent.agent "야간 자전거 수집해줘"`. 검색어를 보여 주면 y/n으로 승인하고, 끝나면 수집·라벨·폐기 장수를 보고한다.
