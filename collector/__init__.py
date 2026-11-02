@@ -10,7 +10,7 @@ from .relevance import filter_irrelevant
 from .unsplash_lite import collect_unsplash_lite
 from .wikimedia import collect_wikimedia
 
-# 오프라인인 Unsplash Lite를 뒤에 둬서, Wikimedia가 실패하면 그 몫까지 받게 한다
+# 목록은 로컬에 있어 검색 API가 필요 없는 Unsplash Lite를 뒤에 둬서, Wikimedia가 실패하면 그 몫까지 받게 한다
 SOURCES = [("wikimedia", collect_wikimedia), ("unsplash_lite", collect_unsplash_lite)]
 
 
