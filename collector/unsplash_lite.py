@@ -15,9 +15,9 @@ LICENSE_URL = "https://github.com/unsplash/datasets/blob/master/TERMS.md"
 MIN_CONFIDENCE = 50  # 확신도가 낮은 AI 키워드에는 관계없는 사진이 많이 섞여 있었다
 
 
-def _confidence(value, scale):
+def _confidence(value):
     try:
-        return float(value) * scale
+        return float(value)
     except ValueError:
         return 0.0
 
@@ -29,9 +29,9 @@ def _load(dataset_dir):
     words = defaultdict(set)
     with open(Path(dataset_dir) / "keywords.tsv000", encoding="utf-8", newline="") as f:
         for r in csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE):
-            # 확신도 열 두 개는 단위가 다르다(0~100, 0~1)
-            conf = max(_confidence(r["ai_service_1_confidence"], 1),
-                       _confidence(r["ai_service_2_confidence"], 100))
+            # DOCS.md 기준 두 열 모두 0~100이다
+            conf = max(_confidence(r["ai_service_1_confidence"]),
+                       _confidence(r["ai_service_2_confidence"]))
             if r["suggested_by_user"] == "t" or conf >= MIN_CONFIDENCE:
                 words[r["photo_id"]].update(re.findall(r"[a-z]+", (r["keyword"] or "").lower()))
     photos = []
