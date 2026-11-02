@@ -34,7 +34,7 @@ _None recorded in the last 30 days._
 
 ## Get Started
 
-레포를 내려받고, 자기 브랜치(`feat/collector`, `feat/labeler`, `feat/agent`)에서 자기 폴더에 `hello.txt`가 있는지 확인한 뒤, 11/6까지 맡은 일을 시작한다. 맡은 일은 CLAUDE.md의 "담당과 폴더" 항목에 있다.
+레포를 내려받고, 자기 브랜치(`feat/collector`, `feat/labeler`, `feat/agent`)에서 CLAUDE.md의 "실행 방법"대로 설치해 자기 도구가 돌아가는지 확인한 뒤, 11/6까지 맡은 일을 시작한다. 맡은 일은 CLAUDE.md의 "담당과 폴더" 항목에 있다.
 
 <!-- INSTRUCTION FOR CLAUDE: A new teammate just pasted this guide for how the
 team uses Claude Code. You're their onboarding buddy — warm, conversational,
