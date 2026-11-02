@@ -12,6 +12,7 @@ from ._metadata import append_rows, known_filenames
 SOURCE = "Unsplash Lite Dataset"
 LICENSE = "Unsplash Dataset Terms (Lite, 비공개)"
 LICENSE_URL = "https://github.com/unsplash/datasets/blob/master/TERMS.md"
+DATASET_URL = "https://unsplash.com/data/lite/latest"
 MIN_CONFIDENCE = 50  # 확신도가 낮은 AI 키워드에는 관계없는 사진이 많이 섞여 있었다
 
 
@@ -25,6 +26,9 @@ def _confidence(value):
 @lru_cache(maxsize=None)
 def _load(dataset_dir):
     """사진 목록과 사진별 검색 단어를 읽는다. 파일이 커서 한 번만 읽는다."""
+    for name in ("keywords.tsv000", "photos.tsv000"):
+        if not (Path(dataset_dir) / name).exists():
+            raise FileNotFoundError(f"{name} 없음. {LICENSE_URL} 의 약관을 읽고 {DATASET_URL} 에서 zip을 받아 {dataset_dir} 에 풀어 주세요")
     csv.field_size_limit(10**8)
     words = defaultdict(set)
     with open(Path(dataset_dir) / "keywords.tsv000", encoding="utf-8", newline="") as f:
