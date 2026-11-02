@@ -17,7 +17,9 @@ TILE_W, TILE_H, COLS = 240, 180, 6
 
 def _read(path, flag=cv2.IMREAD_GRAYSCALE):
     # cv2.imread는 한글 경로를 못 읽어서 imdecode로 읽는다
-    return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), flag)
+    data = np.fromfile(str(path), dtype=np.uint8)
+    # 빈 파일은 imdecode가 None을 돌려주지 않고 예외를 낸다
+    return cv2.imdecode(data, flag) if data.size else None
 
 
 def _blur(gray):
