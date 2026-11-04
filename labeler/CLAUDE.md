@@ -28,13 +28,13 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 - 반환: `labels_dir`, `review_queue_csv`, `images`, `labeled`(txt 만든 장수 = 자동 통과 + 검수), `review`(검수 대기 장수), `discarded`(폐기 장수), `review_ratio`(`review` / `labeled`, 소수 4자리), `boxes`(라벨이 만들어진 사진의 전체 박스 수), `confirmed_boxes`(`conf_threshold` 이상 박스 수, 검수 사진 안 박스 포함)
 - 예측: `imgsz=640`, NMS `iou=0.5`, `conf=discard_threshold`
 - 이미지 단위 분류: 박스가 모두 `conf_threshold` 이상이면 자동 통과, 미만 박스가 하나라도 있으면 검수 대기, `discard_threshold` 이상 박스가 없으면 폐기(txt 없음)
-- `conf_threshold=0.7`은 gt100에서 자동 확정 박스 정답률 90% 이상인 가장 작은 값으로 골랐다(92.8%, 확정 박스 222/547). 같은 세트에서 골라 낙관적일 수 있다
+- `conf_threshold=0.7`은 gt100에서 자동 확정 박스 정답률 90% 이상인 가장 작은 값으로 골랐다(92.8%(206/222), 확정 비율 40.6%(222/547)). 같은 세트에서 골라 낙관적일 수 있다
 - Sum 상위 X%는 시험했지만 무작위(73.6%)보다 낮은 68.0%여서 쓰지 않는다
 - `review_queue.csv` 열: `filename,status,boxes,low_conf_boxes,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함)
 
 ## 라이브러리
 - 사용: `ultralytics`(YOLO)
-- 안 쓰기로 한 것: 야간 밝기 보정, `sahi`(조각 추론). gt100 실험에서 밝기 보정은 F1 변화가 없었고, 조각 추론은 F1이 떨어졌다(yolo11n 0.602 → 0.397)
+- 안 쓰기로 한 것: 야간 밝기 보정, `sahi`(조각 추론). gt100 실험에서 밝기 보정 효과 없음(±0.01 이내), 조각 추론 0.610 → 0.397(yolo11n F1)
 
 ## 규칙
 - `labeler/` 밖은 수정하지 않는다. 공용 파일(루트 `CLAUDE.md`, `.gitignore`)은 팀장(최수창)이 관리한다.
