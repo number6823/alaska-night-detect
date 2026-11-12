@@ -1,7 +1,7 @@
 """검수를 마친 라벨을 학습용(train)과 검증용(val)으로 나누고 Ultralytics data.yaml을 만든다.
 
 실행: python -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset]
-                             [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5]
+                             [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5] [--portable]
 - 라벨 txt가 있는 사진만 쓴다. 폐기된 사진(txt 없음)은 넣지 않는다.
 - gt100은 평가 전용이라 여기에 넣지 않는다.
 - 후방 영상 프레임은 같은 영상이 train과 val에 섞이면 val 점수가 올라가 보인다.
@@ -29,7 +29,8 @@ def round_of(stem: str) -> str | None:
 
 def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path = "data/labels",
                   out_dir: str | Path = "data/dataset", val_ratio: float = 0.2, seed: int = 0,
-                  group_by: str | None = None, exclude_rounds: tuple[str, ...] = ("R5",)) -> dict:
+                  group_by: str | None = None, exclude_rounds: tuple[str, ...] = ("R5",),
+                  portable: bool = False) -> dict:
     images_dir, labels_dir, out_dir = Path(images_dir), Path(labels_dir), Path(out_dir)
     if group_by not in (None, "round"):
         raise ValueError(f"group_by는 None이나 'round'만 된다: {group_by!r}")
@@ -85,8 +86,12 @@ def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path
 
     yaml_path = out_dir / "data.yaml"
     names = "\n".join(f"  {k}: {v}" for k, v in NAMES.items())
+    # portable이면 path 줄을 뺀다. Ultralytics는 path가 없으면 data.yaml이 있는 폴더를 기준으로 삼으므로
+    # (ultralytics/data/utils.py: path = data.get("path") or Path(yaml_file).parent)
+    # 폴더째 Colab이나 다른 PC로 옮겨도 그대로 돌아간다.
+    head = "" if portable else f"path: {out_dir.resolve().as_posix()}\n"
     yaml_path.write_text(
-        f"path: {out_dir.resolve().as_posix()}\ntrain: images/train\nval: images/val\nnames:\n{names}\n",
+        f"{head}train: images/train\nval: images/val\nnames:\n{names}\n",
         encoding="utf-8",
     )
     result = {
@@ -114,9 +119,12 @@ def main() -> None:
                         help="round면 사진 한 장씩이 아니라 라운드(파일 이름의 _R1_) 단위로 나눈다")
     parser.add_argument("--exclude-rounds", nargs="*", default=["R5"], metavar="R5",
                         help="아예 빼는 평가 전용 라운드. 빼지 않으려면 값 없이 --exclude-rounds")
+    parser.add_argument("--portable", action="store_true",
+                        help="data.yaml에 절대 경로를 넣지 않는다. 폴더째 Colab 등으로 옮겨 쓸 때")
     args = parser.parse_args()
     print(json.dumps(split_dataset(args.images, args.labels, args.out, args.val_ratio, args.seed,
-                                   args.group_by, tuple(args.exclude_rounds)), ensure_ascii=False))
+                                   args.group_by, tuple(args.exclude_rounds), args.portable),
+                     ensure_ascii=False))
 
 
 if __name__ == "__main__":
