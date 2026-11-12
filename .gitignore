@@ -7,4 +7,6 @@ data/*
 __pycache__/
 .venv/
 node_modules/
+web/node_modules/
+web/dist/
 *.key
