@@ -5,7 +5,7 @@
   "type": "module",
   "description": "후방 감지 모니터 - Jetson이 보낸 캡처와 감지 기록을 보여 주는 웹 화면",
   "engines": {
-    "node": ">=20"
+    "node": ">=20.19"
   },
   "scripts": {
     "dev": "vite",
@@ -20,8 +20,8 @@
   "devDependencies": {
     "@types/react": "18.3.12",
     "@types/react-dom": "18.3.1",
-    "@vitejs/plugin-react": "4.3.4",
+    "@vitejs/plugin-react": "6.3.0",
     "typescript": "5.6.3",
-    "vite": "5.4.11"
+    "vite": "8.3.8"
   }
 }
