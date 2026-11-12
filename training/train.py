@@ -2,7 +2,7 @@
 
 실행: python -m training.train [--model yolo11n.pt] [--data data/dataset/data.yaml] [--name n_f10]
                               [--freeze 10] [--seed 0] [--epochs 100] [--imgsz 640] [--batch 8] [--skip-eval]
-                              [--lr0 0.01] [--patience 100]
+                              [--lr0 0.01] [--patience 100] [--optimizer auto] [--hsv-v 0.4]
 결과: data/train_full/runs/<name>/weights/best.pt, 평가 리포트 data/train_full/<name>_gt100v2.md
 - gt100 v2는 평가 전용이라 학습·val에 넣지 않는다. 학습 자체에는 필요 없다.
 - 평가는 python -m labeler eval을 그대로 부른다(IoU 0.5, F1·AP50·자동 확정 정답률).
@@ -27,7 +27,7 @@ GT_LABELS = "data/gt100_v2/labels"
 def train(model: str = "yolo11n.pt", data: str = "data/dataset/data.yaml", name: str = "n_f10",
           freeze: int = 10, seed: int = 0, epochs: int = 100, imgsz: int = 640, batch: int = 8,
           skip_eval: bool = False, lr0: float = 0.01, patience: int = 100,
-          optimizer: str = "auto") -> dict:
+          optimizer: str = "auto", hsv_v: float = 0.4) -> dict:
     # 학습을 끝낸 뒤에 정답 세트가 없는 걸 알면 몇십 분을 버리므로 먼저 본다
     if not skip_eval:
         missing = [p for p in (GT_IMAGES, GT_LABELS) if not Path(p).is_dir()]
@@ -38,10 +38,11 @@ def train(model: str = "yolo11n.pt", data: str = "data/dataset/data.yaml", name:
 
     res = YOLO(model).train(data=data, epochs=epochs, imgsz=imgsz, batch=batch, seed=seed, deterministic=True,
                             freeze=freeze, project=str((OUT / "runs").resolve()), name=name, exist_ok=True,
-                            plots=False, verbose=False, lr0=lr0, patience=patience, optimizer=optimizer)
+                            plots=False, verbose=False, lr0=lr0, patience=patience, optimizer=optimizer,
+                            hsv_v=hsv_v)
     best = OUT / "runs" / name / "weights" / "best.pt"
     out = {"best": str(best), "val_map50": round(float(res.box.map50), 4), "evaluated": not skip_eval,
-           "lr0": lr0, "patience": patience, "optimizer": optimizer}
+           "lr0": lr0, "patience": patience, "optimizer": optimizer, "hsv_v": hsv_v}
     if skip_eval:
         return out
 
@@ -74,11 +75,14 @@ def main() -> None:
                         choices=["auto", "SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSprop"],
                         help="auto면 lr0가 무시된다. lr0를 쓰려면 SGD나 AdamW를 직접 지정한다")
     parser.add_argument("--lr0", type=float, default=0.01, help="시작 학습률 (--optimizer를 auto가 아닌 값으로 줘야 적용된다)")
+    # 야간 데이터라 밝기 변화 폭을 키우면 도움이 될 수 있다(최수창 제안). Ultralytics 기본값은 0.4
+    parser.add_argument("--hsv-v", type=float, default=0.4,
+                        help="밝기 증강 폭. 0.7처럼 키우면 더 어둡고 밝은 사진까지 만들어 학습한다")
     parser.add_argument("--patience", type=int, default=100,
                         help="val이 좋아지지 않아도 참는 에포크 수. 줄이면 일찍 멈춘다")
     args = parser.parse_args()
     print(json.dumps(train(args.model, args.data, args.name, args.freeze, args.seed, args.epochs, args.imgsz,
-                           args.batch, args.skip_eval, args.lr0, args.patience, args.optimizer)))
+                           args.batch, args.skip_eval, args.lr0, args.patience, args.optimizer, args.hsv_v)))
 
 
 # Windows는 dataloader worker가 이 파일을 다시 import하므로 가드가 없으면 멈춘다
