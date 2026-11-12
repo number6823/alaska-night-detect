@@ -26,11 +26,14 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 
 데이터셋 나누기 (검수를 마친 라벨을 train/val로 나눠 `data\dataset\`과 `data.yaml`을 만든다):
 ```
-C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset] [--val-ratio 0.2] [--seed 0]
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset] [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5]
 ```
 - `run`·`eval`과 달리 하위 명령이 아니라 모듈을 바로 부른다(`-m labeler.split`)
 - 라벨 txt가 있는 사진만 넣는다. 폐기된 사진(txt 없음)은 빠진다
 - gt100과 gt100 v2는 평가 전용이라 넣지 않는다
+- `--group-by round`: 후방 영상 프레임은 같은 영상이 train과 val에 나뉘어 들어가면 val 점수가 실제보다 좋게 나온다. 이 옵션을 주면 사진 한 장씩이 아니라 라운드 단위로 나눈다. 라운드는 파일 이름 안의 `_R1_`로 읽는다(촬영 파일명 `20261112_R1_01_보행접근.mp4` 기준). 라운드 표시가 없는 사진(collector가 모은 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
+- `--exclude-rounds`: 평가 전용 라운드를 아예 뺀다. 기본값 `R5`이며 `--group-by`와 상관없이 적용한다(학습에 섞이면 평가를 못 쓰게 되므로). 빼지 않으려면 값 없이 `--exclude-rounds`
+- 라운드가 적어 val이 0묶음이 되면 1묶음은 val로 보낸다(val이 비면 학습이 안 돈다)
 - `--out` 폴더가 이미 있으면 `FileExistsError`로 멈춘다. 지난 결과와 섞이지 않게 하려는 것이니 다시 나누려면 폴더를 직접 지운다
 - 사진과 라벨은 `out\images\{train,val}`, `out\labels\{train,val}`로 복사한다. `data\images\`의 원본은 그대로 둔다
 - 여기서 나온 `data\dataset\data.yaml`을 `training\train.py`가 읽는다
@@ -45,9 +48,11 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/
 - `review_queue.csv` 열: `filename,status,boxes,low_conf_boxes,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함)
 
 ## 함수 규약 (split, training 호출)
-`split_dataset(images_dir="data/images", labels_dir="data/labels", out_dir="data/dataset", val_ratio=0.2, seed=0) -> dict`
-- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수)
+`split_dataset(images_dir="data/images", labels_dir="data/labels", out_dir="data/dataset", val_ratio=0.2, seed=0, group_by=None, exclude_rounds=("R5",)) -> dict`
+- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수), `group_by`, `excluded_rounds`(뺀 라운드별 장수), `groups`(`group_by="round"`일 때만, train/val에 들어간 라운드 이름)
 - `seed`로 섞는 순서를 고정한다. 같은 입력이면 같게 나뉜다
+- `group_by=None`(기본)은 사진 한 장 단위로 나눈다. 전과 같은 동작이다
+- `group_by="round"`는 라운드 단위로 나눈다. 영상 프레임을 넣을 때 쓴다
 - agent가 아니라 `training/train.py`가 쓴다. 경로·반환을 바꿀 때는 training 쪽과 먼저 맞춘다
 
 ## 라이브러리
