@@ -1,0 +1,198 @@
+/* 레이아웃: 상단 상태바 → 지표 4칸 → 캡처(좌) + 기록표(우) 2열, 좁아지면 1열 */
+:root {
+  --bg: #0e1116;
+  --panel: #161b23;
+  --panel-2: #1c222c;
+  --line: #2a323f;
+  --fg: #e6eaf0;
+  --fg-dim: #8c97a8;
+  --accent: #f0a93b; /* 경고등 호박색 */
+  --person: #35c46a; /* agent/preview.py 와 같은 초록 */
+  --bicycle: #f2812f; /* agent/preview.py 와 같은 주황 */
+  --danger: #e45a5a;
+  --level1: #7fb4e6;
+  --font-ui: "Inter", "Noto Sans KR", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --panel-2: #eef1f6;
+    --line: #d7dde6;
+    --fg: #18202c;
+    --fg-dim: #5d6a7c;
+    --accent: #b06f0c;
+    --person: #1e8c49;
+    --bicycle: #c25c12;
+    --danger: #c23c3c;
+    --level1: #3b74ab;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --panel-2: #eef1f6;
+  --line: #d7dde6;
+  --fg: #18202c;
+  --fg-dim: #5d6a7c;
+  --accent: #b06f0c;
+  --person: #1e8c49;
+  --bicycle: #c25c12;
+  --danger: #c23c3c;
+  --level1: #3b74ab;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+}
+img { max-width: 100%; }
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-inline: 16px;
+  padding-block: 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* 상단 상태 */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 14px;
+}
+.topbar h1 { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; margin: 0; }
+.live { display: inline-flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--fg-dim); font-family: var(--font-mono); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--person); box-shadow: 0 0 0 3px color-mix(in srgb, var(--person) 22%, transparent); }
+.dot.off { background: var(--fg-dim); box-shadow: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .dot:not(.off) { animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.45; } }
+}
+.tag {
+  margin-left: auto;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  border-radius: 999px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+/* 지표 */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.stat .k { font-size: 0.72rem; color: var(--fg-dim); letter-spacing: 0.04em; }
+.stat .v { font-family: var(--font-mono); font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+
+/* 패널 */
+.cols { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 6fr); gap: 18px; align-items: start; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-width: 0; overflow: hidden; }
+.panel > header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.panel h2 { font-size: 0.85rem; font-weight: 600; margin: 0; letter-spacing: 0.02em; }
+.sub { font-size: 0.74rem; color: var(--fg-dim); font-family: var(--font-mono); margin-left: auto; }
+
+/* 캡처 */
+.capture { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.frame { position: relative; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden; background: #070a0e; border: 1px solid var(--line); }
+.frame img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.frame .empty { display: grid; place-items: center; height: 100%; color: var(--fg-dim); font-size: 0.85rem; }
+.stamp {
+  position: absolute; left: 8px; bottom: 8px;
+  font-family: var(--font-mono); font-size: 0.68rem; color: #cfd6e0;
+  background: rgba(7, 10, 14, 0.78); padding: 2px 7px; border-radius: 4px;
+}
+.beep {
+  position: absolute; right: 8px; top: 8px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.7rem; font-weight: 700; color: #0e1116;
+  padding: 3px 9px; border-radius: 999px; font-family: var(--font-mono);
+}
+.beep[data-level="1"] { background: var(--level1); }
+.beep[data-level="2"] { background: var(--accent); }
+.beep[data-level="3"] { background: var(--danger); color: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .beep[data-level="3"] { animation: urgent 0.9s steps(2) infinite; }
+  @keyframes urgent { 50% { opacity: 0.55; } }
+}
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.78rem; color: var(--fg-dim); }
+.meta b { color: var(--fg); font-weight: 600; font-family: var(--font-mono); }
+.credit { font-size: 0.72rem; color: var(--fg-dim); border-top: 1px dashed var(--line); padding-top: 10px; }
+.credit a { color: var(--fg-dim); }
+
+/* 필터 */
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip {
+  font: inherit; font-size: 0.75rem; color: var(--fg-dim);
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 11px; cursor: pointer;
+}
+.chip[aria-pressed="true"] { color: var(--bg); background: var(--fg); border-color: var(--fg); }
+.chip:focus-visible, .row:focus-visible, .flag:focus-visible, .theme:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+
+/* 기록표 */
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.8rem; }
+th {
+  text-align: left; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em;
+  color: var(--fg-dim); padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.row { cursor: pointer; }
+.row:hover { background: var(--panel-2); }
+.row[aria-selected="true"] { background: color-mix(in srgb, var(--accent) 13%, transparent); }
+.row.flagged td:not(.c-flag) { opacity: 0.45; text-decoration: line-through; }
+.t { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.kind { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+.swatch { width: 9px; height: 9px; border-radius: 2px; }
+.conf, .boxes { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.boxes { color: var(--fg-dim); }
+.conf.low { color: var(--accent); }
+.lv {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-mono); font-size: 0.72rem; font-weight: 700;
+  border-radius: 5px; padding: 1px 6px;
+}
+.lv[data-level="0"] { color: var(--fg-dim); font-weight: 400; }
+.lv[data-level="1"] { color: var(--level1); background: color-mix(in srgb, var(--level1) 16%, transparent); }
+.lv[data-level="2"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.lv[data-level="3"] { color: var(--danger); background: color-mix(in srgb, var(--danger) 18%, transparent); }
+.flag {
+  font: inherit; font-size: 0.72rem; color: var(--fg-dim); background: none;
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; cursor: pointer;
+}
+.flag[aria-pressed="true"] { color: var(--danger); border-color: var(--danger); font-weight: 600; }
+.empty-row { color: var(--fg-dim); padding: 16px 10px; }
+
+/* 아래 설명 */
+.note { font-size: 0.78rem; color: var(--fg-dim); border-top: 1px solid var(--line); padding-top: 14px; }
+.note code { font-family: var(--font-mono); font-size: 0.74rem; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.note ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
+.theme {
+  font: inherit; font-size: 0.72rem; color: var(--fg-dim); background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; cursor: pointer; margin-top: 10px;
+}
+
+@media (max-width: 880px) {
+  .cols { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
