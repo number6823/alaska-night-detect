@@ -22,6 +22,7 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 - 정답은 `data\gt100\images\`(사진)와 `data\gt100\labels\`(같은 이름 YOLO txt). 클래스 순서 person=0, bicycle=1
 - 일치율 = 전체 F1 (IoU 0.5 이상, 같은 클래스끼리 짝지음). F1은 보고만 하고 목표로 삼지 않는다. 목표는 검수할 사진 수와 고칠 박스 수 줄이기
 - 파일 이름 첫 `_` 앞(`night`, `day`)으로 야간·낮을 따로 집계한다
+- `--no-predict`: 모델을 부르지 않고 `--pred` 폴더에 **이미 있는 라벨**을 `--gt`와 비교한다. 두 사람이 같은 사진을 따로 라벨한 뒤 일치율을 볼 때 쓴다(R5 gt_rear 교차 검수). `--images`·`--model`은 쓰이지 않는다. 일치율(F1)은 어느 쪽을 `--pred`로 놔도 같고, precision과 recall만 서로 바뀐다. 리포트 제목은 "자동 라벨 정확도" 그대로라 사람끼리 비교한 것이면 읽을 때 감안한다
 - 리포트에 자동 확정 박스 정답률(conf 0.7 이상 박스 중 IoU 0.5로 맞은 비율)과 확정 박스 수·비율, AP50(표준 방식 conf 0.001부터 / labeler 출력 conf 0.25 이상)과 오류 종류 개수(TIDE: Cls, Loc, Both, Dupe, Bkg, Miss)를 함께 낸다. 라벨 txt에는 conf가 없어서 eval이 conf 0.001로 한 번 더 예측한다(`predict_scored`)
 
 데이터셋 나누기 (검수를 마친 라벨을 train/val로 나눠 `data\dataset\`과 `data.yaml`을 만든다):

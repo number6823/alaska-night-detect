@@ -26,6 +26,9 @@ def main() -> None:
     ev.add_argument("--conf-threshold", type=float, default=0.7, help="이 이상 박스는 자동 확정, 미만 박스가 있으면 검수")
     ev.add_argument("--discard-threshold", type=float, default=0.25, help="이 미만 박스는 버림")
     ev.add_argument("--model", default="yolo11n.pt", help="YOLO 가중치")
+    ev.add_argument("--no-predict", action="store_true",
+                    help="자동 라벨링을 하지 않고 --pred 폴더에 이미 있는 라벨을 --gt와 비교한다. "
+                         "두 사람이 따로 라벨한 같은 사진의 일치율을 볼 때 쓴다")
     args = parser.parse_args()
 
     if args.command == "run":
@@ -37,6 +40,10 @@ def main() -> None:
             args.discard_threshold,
             args.model,
         )
+    elif args.no_predict:
+        # 모델을 부르지 않는다. --pred 에 있는 라벨을 그대로 --gt 와 맞춰 본다.
+        # 사람이 그린 라벨 두 벌을 비교할 때 쓴다(일치율 = F1, 어느 쪽을 pred로 놔도 같다).
+        summary = evaluate(args.pred, args.gt, args.report, args.iou)
     else:
         run_labeler(args.images, args.pred, args.review_queue, args.conf_threshold, args.discard_threshold, args.model)
         scored = predict_scored(args.images, args.model)
