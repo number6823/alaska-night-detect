@@ -67,10 +67,13 @@ def build_remap(names: list[str]) -> dict[int, int]:
 
 def import_export(export_dir: str | Path, labels_dir: str | Path = "data/labels",
                   images_dir: str | Path = "data/images", copy_images: bool = False,
-                  out_reviewed: str | Path | None = None) -> dict:
+                  out_reviewed: str | Path | None = None, keep_empty: bool = False) -> dict:
     """export 폴더의 라벨을 우리 번호·이름으로 바꿔 labels_dir 에 쓴다.
 
-    - 빈 라벨은 txt 를 만들지 않는다(labeler 의 폐기 규칙과 같게).
+    - 빈 라벨은 기본적으로 txt 를 만들지 않는다(labeler 의 폐기 규칙과 같게).
+    - keep_empty 면 빈 txt 를 만든다. YOLO 에서 빈 txt 는 "물체 없음"이라 **배경 사진**이 된다.
+      팀 규칙(2026-11-13): 진짜 아무도 없는 프레임만 Mark Null 로 두고, 사람이 있는데
+      안 보이는 프레임은 Dataset 에서 뺀다. 그래서 빈 라벨은 전부 배경으로 취급해도 된다.
     - copy_images 면 images_dir 에 없는 사진을 export 에서 가져온다.
     - out_reviewed 를 주면 이번에 들어온 라벨만 따로 한 벌 더 쓴다(split 에 바로 넘기려고).
     """
@@ -92,7 +95,7 @@ def import_export(export_dir: str | Path, labels_dir: str | Path = "data/labels"
     local = {p.name for p in images_dir.iterdir() if p.suffix.lower() in IMAGE_EXTS} \
         if images_dir.exists() else set()
 
-    written = empty = skipped = copied = 0
+    written = empty = background = skipped = copied = 0
     boxes = {name: 0 for name in OUR_IDS}
     unnamed: list[str] = []
 
@@ -118,7 +121,9 @@ def import_export(export_dir: str | Path, labels_dir: str | Path = "data/labels"
 
         if not lines:
             empty += 1
-            continue
+            if not keep_empty:
+                continue
+            background += 1
 
         img_name = f"{stem}.{ext}"
         if img_name not in local:
@@ -131,7 +136,8 @@ def import_export(export_dir: str | Path, labels_dir: str | Path = "data/labels"
                 shutil.copy2(src, images_dir / img_name)
                 copied += 1
 
-        body = "\n".join(lines) + "\n"
+        # 빈 라벨은 빈 txt 로 쓴다. YOLO 가 이것을 배경 사진으로 읽는다
+        body = ("\n".join(lines) + "\n") if lines else ""
         (labels_dir / f"{stem}.txt").write_text(body, encoding="utf-8")
         if reviewed_dir:
             (reviewed_dir / f"{stem}.txt").write_text(body, encoding="utf-8")
@@ -145,6 +151,7 @@ def import_export(export_dir: str | Path, labels_dir: str | Path = "data/labels"
         "person": boxes["person"],
         "bicycle": boxes["bicycle"],
         "empty": empty,
+        "background_kept": background,
         "images_copied": copied,
         "skipped_no_image": skipped,
         "unnamed": unnamed,
@@ -160,9 +167,12 @@ def main() -> None:
                         help="사진 폴더에 없는 사진을 export 에서 가져온다")
     parser.add_argument("--out-reviewed", default=None,
                         help="이번에 들어온 라벨만 따로 쓸 폴더 (예: data/labels_reviewed)")
+    parser.add_argument("--keep-empty", action="store_true",
+                        help="빈 라벨을 빈 txt 로 남긴다. 그 사진은 학습에서 배경으로 쓰인다")
     args = parser.parse_args()
 
-    result = import_export(args.export, args.labels, args.images, args.copy_images, args.out_reviewed)
+    result = import_export(args.export, args.labels, args.images, args.copy_images,
+                           args.out_reviewed, args.keep_empty)
 
     order = " ".join(f"{i}={n}" for i, n in enumerate(result["export_names"]))
     print(f"export 클래스 순서: {order}")
