@@ -9,7 +9,8 @@
 사람이 있는 곳을 찾는 방법(둘을 합친다)
 1. YOLO 를 낮은 신뢰도(0.05)로 돌려 사람 박스를 찾고 박스 위쪽 약 30%를 가린다.
 2. OpenCV 얼굴 검출기 YuNet(face_detection_yunet_2023mar.onnx)이 찾은 얼굴을 가린다.
-   --yunet 으로 모델 파일을 주면 켜진다. 없으면 1번만 한다. (OpenCV 5 에는 예전 Haar 검출기가 없다)
+   --yunet 으로 모델 파일을 준다. **안 주면 멈춘다**(올리는 것이 실제 행인 사진이고, YuNet 유무로 못 찾은 프레임이
+   약 39% <-> 15% 로 갈린다). 알고도 1번만 쓰려면 --allow-no-yunet 을 준다. (OpenCV 5 에는 예전 Haar 검출기가 없다)
 
 어두운 프레임: 원본 그대로는 사람을 많이 못 찾는다(R6_04 골목 76%가 한 곳도 못 찾음). 그래서 **찾는 데만**
 감마(기본 1.5)로 밝힌 사진도 같이 돌려 두 결과를 합치고, 모자이크와 저장은 **원본 사진**에 한다.
@@ -57,10 +58,20 @@ def blur_folder(
     imgsz: int = 960,
     yunet: str | None = None,
     detect_gamma: float = 1.5,
+    allow_no_yunet: bool = False,
 ) -> dict:
     from ultralytics import YOLO  # 무거워서 쓸 때만 불러온다
 
     src, out = Path(src), Path(out)
+    # 올리는 것이 실제 행인 사진이라, 얼굴 검출기 없이는 기본으로 돌지 않는다.
+    # YuNet 유무가 못 찾은 프레임 비율을 크게 바꾼다(R6_04 에서 약 39% <-> 15%).
+    # 결과 폴더를 만들기 전에 확인해서, 멈췄을 때 빈 폴더가 남지 않게 한다.
+    if not allow_no_yunet and not (yunet and Path(yunet).exists()):
+        reason = "--yunet 을 안 줬다" if not yunet else f"얼굴 검출기 모델이 없다: {yunet}"
+        raise FileNotFoundError(
+            f"{reason}. 얼굴 검출기(face_detection_yunet_2023mar.onnx) 없이 올리면 얼굴이 더 많이 남는다. "
+            "--yunet <모델.onnx> 를 주거나, 알고도 YOLO 머리 모자이크만 쓰려면 --allow-no-yunet 을 준다"
+        )
     if out.exists():
         raise FileExistsError(f"이미 있다: {out} (지우고 다시 실행)")
     paths = sorted(p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTS)
@@ -72,11 +83,10 @@ def blur_folder(
     face = None
     if yunet and Path(yunet).exists():
         face = cv2.FaceDetectorYN.create(yunet, "", (320, 320), 0.4, 0.3, 5000)
-    elif yunet:
-        print(f"[얼굴 검출기 모델 없음: {yunet}] YOLO 머리 모자이크만 한다.")
     else:
         print(
-            "[--yunet 을 안 줬다] YOLO 머리 모자이크만 한다. 얼굴 검출기를 켜는 것이 안전하다."
+            "[--allow-no-yunet] 얼굴 검출기 없이 YOLO 머리 모자이크만 한다. "
+            "못 찾는 얼굴이 더 많으니 결과 사진을 더 꼼꼼히 본다."
         )
 
     table = None
@@ -166,7 +176,14 @@ def main() -> None:
     parser.add_argument("--conf", type=float, default=0.05)
     parser.add_argument("--imgsz", type=int, default=960)
     parser.add_argument(
-        "--yunet", default=None, help="face_detection_yunet_2023mar.onnx 경로"
+        "--yunet",
+        default=None,
+        help="face_detection_yunet_2023mar.onnx 경로 (없으면 --allow-no-yunet 이 있어야 돈다)",
+    )
+    parser.add_argument(
+        "--allow-no-yunet",
+        action="store_true",
+        help="얼굴 검출기 없이 YOLO 머리 모자이크만 쓰는 것을 알고 허용한다",
     )
     parser.add_argument(
         "--detect-gamma",
@@ -183,6 +200,7 @@ def main() -> None:
         args.imgsz,
         args.yunet,
         args.detect_gamma,
+        args.allow_no_yunet,
     )
     print(
         f"사진 {result['images']}장: 사람 머리 {result['heads']}곳 + 얼굴 {result['faces']}곳을 모자이크 -> {result['out']}"
