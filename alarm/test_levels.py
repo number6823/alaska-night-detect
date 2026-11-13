@@ -114,6 +114,38 @@ class CalibrationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             Calibration.from_dict(data)
 
+    def test_tiers_change_at_the_stated_distances(self):
+        """말한 거리(5.5m, 3m, 2m)에서 단계가 바뀐다. 기하로 재현한 거리별 발 위치를 쓴다."""
+        import math
+
+        def foot(d, h=0.7, tilt=15.0, vfov=60.0):
+            half = math.tan(math.radians(vfov) / 2)
+            theta = math.atan(h / d) - math.radians(tilt)
+            return 0.5 + math.tan(theta) / (2 * half)
+
+        def at(d):
+            return person(foot(d))
+
+        cal = calibrate_from_samples(
+            [at(5.5)] * 3, [at(3.0)] * 3, [at(2.0)] * 3, frame_height=H
+        )
+        self.assertEqual(frame_level([at(9.0)], cal), 0)  # 5.5m 밖은 울리지 않는다
+        self.assertEqual(frame_level([at(5.6)], cal), 0)
+        self.assertEqual(frame_level([at(5.4)], cal), 1)
+        self.assertEqual(frame_level([at(3.1)], cal), 1)
+        self.assertEqual(frame_level([at(2.9)], cal), 2)
+        self.assertEqual(frame_level([at(2.1)], cal), 2)
+        self.assertEqual(frame_level([at(1.9)], cal), 3)
+
+    def test_margin_makes_it_ring_slightly_earlier(self):
+        s55, s3, s2 = [person(0.55)], [person(0.70)], [person(0.85)]
+        plain = calibrate_from_samples(s55, s3, s2, frame_height=H)
+        early = calibrate_from_samples(s55, s3, s2, frame_height=H, margin=0.02)
+        self.assertEqual(frame_level([person(0.54)], plain), 0)
+        self.assertEqual(frame_level([person(0.54)], early), 1)
+        with self.assertRaises(ValueError):
+            calibrate_from_samples(s55, s3, s2, frame_height=H, margin=-0.01)
+
     def test_calibrate_rejects_empty_group(self):
         with self.assertRaises(ValueError):
             calibrate_from_samples([], [person(0.7)], [person(0.85)], frame_height=H)
