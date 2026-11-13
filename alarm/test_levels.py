@@ -95,6 +95,25 @@ class CalibrationTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             calibrate_from_samples(s55, s3, s2, frame_height=H)
 
+    def test_save_and_load_roundtrip(self):
+        import os
+        import tempfile
+
+        from alarm.levels import load_calibration, save_calibration
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "calibration.json")
+            save_calibration(CAL, path)
+            self.assertEqual(load_calibration(path), CAL)
+
+    def test_from_dict_ignores_unknown_keys_and_validates(self):
+        data = CAL.to_dict()
+        data["memo"] = "9번 클립으로 잼"
+        self.assertEqual(Calibration.from_dict(data), CAL)
+        data["foot_3"] = 0.9  # 가까울수록 아래여야 하는 순서가 깨졌다
+        with self.assertRaises(ValueError):
+            Calibration.from_dict(data)
+
     def test_calibrate_rejects_empty_group(self):
         with self.assertRaises(ValueError):
             calibrate_from_samples([], [person(0.7)], [person(0.85)], frame_height=H)

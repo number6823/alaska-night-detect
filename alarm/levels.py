@@ -14,6 +14,8 @@ PC 에서 시험할 수 있게 일부러 순수 함수로 만들었다.
   그래서 박스 아래 끝의 높이(0=맨 위, 1=맨 아래)만 보고 거리를 3단계로 나눈다. 정확한 거리 측정이 아니다.
 - 기준값(Calibration)은 거리 기준 영상(촬영 계획표 9번: 5.5m → 3m → 2m 위에 차례로 서기)에서
   발 위치를 재서 `calibrate_from_samples` 로 만든다. 카메라 높이를 바꾸면 다시 만든다.
+- 잰 값은 코드에 박지 않고 `save_calibration`/`load_calibration` 으로 JSON 파일에 둔다.
+  `calibration.example.json` 은 `estimate_calibration` 의 **추정치 예시**이고 실측값이 아니다.
 - 영상으로 재기 전 임시값이 필요하면 `estimate_calibration` 으로 기하학 계산값을 얻는다.
   이 값은 렌즈 화각을 가정한 **추정**이라 실제 영상으로 반드시 보정한다.
 - 발이 화면 아래에서 잘린 박스는 아주 가깝다고 보고 3단계(2m 이내)로 처리한다.
@@ -27,9 +29,11 @@ PC 에서 시험할 수 있게 일부러 순수 함수로 만들었다.
 
 from __future__ import annotations
 
+import json
 import math
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 from typing import Iterable, Sequence
 
 LEVEL_NAMES = {0: "없음", 1: "5.5m 이내", 2: "3m 이내", 3: "2m 이내"}
@@ -62,6 +66,27 @@ class Calibration:
                 f"{self.foot_5_5}, {self.foot_3}, {self.foot_2}"
             )
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Calibration:
+        """저장한 기준값(JSON 에서 읽은 dict)으로 되돌린다. 모르는 키는 무시한다."""
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in names})
+
+
+def save_calibration(cal: Calibration, path: str | Path) -> None:
+    """기준값을 JSON 파일로 저장한다. 거리 기준 영상으로 잰 값을 코드가 아니라 파일에 둔다."""
+    Path(path).write_text(
+        json.dumps(cal.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def load_calibration(path: str | Path) -> Calibration:
+    """JSON 파일에서 기준값을 읽는다. 경계 값은 코드에 박지 않고 이 파일에서 온다."""
+    return Calibration.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
 
 def estimate_calibration(
     camera_height_m: float = 0.7,
@@ -85,9 +110,7 @@ def estimate_calibration(
         theta = math.atan(camera_height_m / d) - math.radians(tilt_deg)
         ys.append(0.5 + math.tan(theta) / (2 * half))
     ys = [min(1.0, max(0.0, y)) for y in ys]
-    return Calibration(
-        ys[0], ys[1], ys[2], frame_height, round(camera_height_m * 100)
-    )
+    return Calibration(ys[0], ys[1], ys[2], frame_height, round(camera_height_m * 100))
 
 
 def _median(values: Sequence[float]) -> float:
