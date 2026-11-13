@@ -56,6 +56,25 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/
 - `group_by="round"`는 라운드 단위로 나눈다. 영상 프레임을 넣을 때 쓴다
 - agent가 아니라 `training/train.py`가 쓴다. 경로·반환을 바꿀 때는 training 쪽과 먼저 맞춘다
 
+Roboflow export 가져오기 (검수한 라벨을 우리 형식으로 되돌린다):
+```
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.from_roboflow <export 폴더> [--labels data/labels] [--images data/images] [--copy-images] [--out-reviewed data/labels_reviewed]
+```
+- **Roboflow는 클래스를 알파벳 순서로 내보낸다.** `bicycle` < `person` 이라 **항상** `bicycle=0, person=1` 로 나오고, 우리 규칙(`person=0, bicycle=1`)과 반대다. 그대로 쓰면 사람과 자전거가 통째로 뒤바뀌는데 **조용히 틀린다**
+- `data.yaml` 의 `names` 순서를 읽어서 번호를 맞춘다. Roboflow가 순서를 바꾸더라도 맞게 들어간다
+- 우리가 쓰지 않는 클래스가 있으면 멈춘다(모르는 채로 넘어가지 않게)
+- 파일 이름의 `_jpg.rf.<해시>` 를 떼서 원래 이름으로 되돌린다
+- `train/valid/test` 를 모두 합친다. 학습용 분할은 `labeler.split` 이 다시 한다
+- 빈 라벨은 txt 를 만들지 않는다(폐기 규칙과 같게)
+- `--copy-images`: 사진 폴더에 없는 사진을 export 에서 가져온다
+- `--out-reviewed`: 이번에 들어온 라벨만 따로 한 벌 더 쓴다. `labeler.split --labels` 에 바로 넘기려는 용도
+
+## 함수 규약 (from_roboflow)
+`import_export(export_dir, labels_dir="data/labels", images_dir="data/images", copy_images=False, out_reviewed=None) -> dict`
+- 반환: `export_names`(export의 클래스 순서), `flipped`(뒤집었는지), `labels`(쓴 장수), `boxes`, `person`, `bicycle`, `empty`(빈 라벨), `images_copied`, `skipped_no_image`, `unnamed`(`.rf` 꼬리표가 없어 건너뛴 파일)
+- `original_name(stem)`: `이름_jpg.rf.해시` → `("이름", "jpg")`. 꼬리표가 없으면 `None`
+- `read_class_order(export_dir)`: `data.yaml` 의 클래스 이름을 번호 순서대로 읽는다(한 줄 `names: [...]` 와 여러 줄 `0: person` 둘 다 지원)
+
 ## 라이브러리
 - 사용: `ultralytics`(YOLO)
 - 안 쓰기로 한 것: 야간 밝기 보정, `sahi`(조각 추론). gt100 실험에서 밝기 보정 효과 없음(±0.01 이내), 조각 추론 0.610 → 0.397(yolo11n F1)
