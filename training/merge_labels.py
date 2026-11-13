@@ -33,9 +33,13 @@ from pathlib import Path
 from labeler.from_roboflow import IMAGE_EXTS, import_export
 
 # 20261112_R6_04_자유촬영_밝기미확인_f08083 / 20261112_R6_04_-_-_f08083 -> (날짜, R6, 04, f08083)
+# 영상 설명(자유촬영_밝기미확인 등)은 있어도 없어도 된다: ..._R5_01_f00010 도 읽는다
 FRAME_RE = re.compile(
-    r"^(?P<date>\d{8})_(?P<round>R\d+)_(?P<no>\d+)_.*_(?P<frame>f\d+)$", re.IGNORECASE
+    r"^(?P<date>\d{8})_(?P<round>R\d+)_(?P<no>\d+)(?:_.*)?_(?P<frame>f\d+)$", re.IGNORECASE
 )
+# 이름에 라운드 표시(_R5_)가 있는데 키를 못 만들면 영상 프레임인데 이름이 틀어진 것이다.
+# 그냥 '영상이 아닌 사진' 쪽으로 보내면 모자이크 사본이 조용히 학습에 들어가므로 멈춘다.
+ROUND_IN_NAME = re.compile(r"_R\d+_", re.IGNORECASE)
 
 
 def frame_key(stem: str) -> tuple[str, str, str, str] | None:
@@ -87,17 +91,25 @@ def merge(
         raise FileExistsError(f"{out_dir} 가 이미 있다. 지우고 다시 실행한다")
 
     originals: dict[tuple, Path] = {}
+    unparsed_originals: list[str] = []
     for p in sorted(originals_dir.iterdir()):
         if p.suffix.lower() not in IMAGE_EXTS:
             continue
         key = frame_key(p.stem)
         if key is None:
+            if ROUND_IN_NAME.search(p.stem):
+                unparsed_originals.append(p.name)
             continue
         if key in originals:
             raise ValueError(
                 f"원본 프레임 키가 겹친다: {key} -> {originals[key].name}, {p.name}"
             )
         originals[key] = p
+    if unparsed_originals:
+        raise ValueError(
+            f"원본 이름에 라운드(_R5_ 등)가 있는데 프레임 키를 못 만든다({len(unparsed_originals)}): "
+            f"{unparsed_originals[:5]}. 이름이 날짜_라운드_번호[_설명]_f프레임번호 모양인지 본다"
+        )
     if not originals:
         raise FileNotFoundError(f"{originals_dir} 에서 영상 프레임 원본을 못 찾았다")
 
@@ -106,11 +118,14 @@ def merge(
         "video_frames": 0,
         "other_images": 0,
         "other_from_export": 0,
+        "size_checked": 0,
+        "size_check_skipped": 0,
         "empty_labels": 0,
         "person": 0,
         "bicycle": 0,
     }
     missing: list[str] = []
+    unparsed: list[str] = []
     size_mismatch: list[str] = []
     used_keys: set[tuple] = set()
 
@@ -123,21 +138,22 @@ def merge(
         img_out, lab_out = out_dir / "images", out_dir / "labels"
         staged: list[tuple[Path, Path, str]] = []  # (사진 원본, 라벨 txt, 쓸 사진 이름)
 
+        # export 사진을 이름(.rf 꼬리표 뗀 것)으로 한 번만 찾아 둔다(라벨마다 폴더를 다시 훑지 않는다)
+        export_images: dict[str, Path] = {}
+        for p in export_dir.rglob("images/*"):
+            if p.suffix.lower() in IMAGE_EXTS:
+                base = re.sub(
+                    r"_(jpg|jpeg|png)\.rf\.[0-9a-f]+$", "", p.stem, flags=re.IGNORECASE
+                )
+                export_images.setdefault(base, p)
+
         for txt in sorted(tmp_labels.glob("*.txt")):
             stem = txt.stem
-            export_img = next(
-                (
-                    p
-                    for p in export_dir.rglob("images/*")
-                    if p.suffix.lower() in IMAGE_EXTS
-                    and re.sub(
-                        r"_(jpg|jpeg|png)\.rf\.[0-9a-f]+$", "", p.stem, flags=re.IGNORECASE
-                    )
-                    == stem
-                ),
-                None,
-            )
+            export_img = export_images.get(stem)
             key = frame_key(stem)
+            if key is None and ROUND_IN_NAME.search(stem):
+                unparsed.append(stem)
+                continue
             if key is not None:
                 orig = originals.get(key)
                 if orig is None:
@@ -148,9 +164,15 @@ def merge(
                 used_keys.add(key)
                 if check_size and export_img is not None:
                     a, b = _image_size(export_img), _image_size(orig)
-                    if a is not None and b is not None and a != b:
+                    if a is None or b is None:
+                        stats["size_check_skipped"] += 1  # 읽을 도구가 없거나 못 읽었다
+                    elif a != b:
                         size_mismatch.append(f"{orig.name}: 사본 {a} / 원본 {b}")
                         continue
+                    else:
+                        stats["size_checked"] += 1
+                elif check_size:
+                    stats["size_check_skipped"] += 1
                 staged.append((orig, txt, orig.name))
                 stats["video_frames"] += 1
             else:
@@ -166,9 +188,10 @@ def merge(
                 # export 의 사진 이름에는 _jpg.rf.<해시> 가 붙어 있다. 라벨 이름(stem)에 맞춘다
                 staged.append((src, txt, f"{stem}{src.suffix.lower()}"))
 
-        if missing or size_mismatch:
+        if missing or size_mismatch or unparsed:
             raise ValueError(
                 "붙이지 못한 것이 있어 멈춘다.\n"
+                f"  라운드 표시는 있는데 프레임 키를 못 만듦({len(unparsed)}): {unparsed[:5]}\n"
                 f"  원본을 못 찾음({len(missing)}): {missing[:5]}\n"
                 f"  크기가 다름({len(size_mismatch)}): {size_mismatch[:3]}"
             )

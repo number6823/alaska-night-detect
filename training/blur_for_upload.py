@@ -9,9 +9,16 @@
 사람이 있는 곳을 찾는 방법(둘을 합친다)
 1. YOLO 를 낮은 신뢰도(0.05)로 돌려 사람 박스를 찾고 박스 위쪽 약 30%를 가린다.
 2. OpenCV 얼굴 검출기 YuNet(face_detection_yunet_2023mar.onnx)이 찾은 얼굴을 가린다.
-   --yunet 으로 모델 파일을 주면 켜진다. 없으면 1번만 한다. (OpenCV 5 에는 예전 Haar 검출기가 없다)
+   --yunet 으로 모델 파일을 준다. **안 주면 멈춘다**(올리는 것이 실제 행인 사진이고, YuNet 유무로 못 찾은 프레임이
+   약 39% <-> 15% 로 갈린다). 알고도 1번만 쓰려면 --allow-no-yunet 을 준다. (OpenCV 5 에는 예전 Haar 검출기가 없다)
 
-한계: 아주 작거나 어두워서 둘 다 못 찾은 얼굴은 가려지지 않는다. 결과 사진을 눈으로 확인한 뒤 올린다.
+어두운 프레임: 원본 그대로는 사람을 많이 못 찾는다(R6_04 골목 76%가 한 곳도 못 찾음). 그래서 **찾는 데만**
+감마(기본 1.5)로 밝힌 사진도 같이 돌려 두 결과를 합치고, 모자이크와 저장은 **원본 사진**에 한다.
+(밝힌 사진은 저장하지 않는다. 박스 좌표는 같다.) --detect-gamma 0 이면 이 단계를 끈다.
+
+한계: 아주 작거나 어두워서 모두 못 찾은 얼굴은 가려지지 않는다. 한 곳도 못 찾은 프레임은
+`<out>_no_detection.txt` 에 목록을 남긴다. 그 프레임은 사람이 없는 장면일 수도, 못 찾은 것일 수도 있으니
+**목록의 사진만 눈으로 확인**한 뒤 올린다. (사람이 찍혔는데 목록에 없다고 안전한 것은 아니다. 일부만 가려졌을 수 있다)
 """
 
 from __future__ import annotations
@@ -50,10 +57,21 @@ def blur_folder(
     conf: float = 0.05,
     imgsz: int = 960,
     yunet: str | None = None,
+    detect_gamma: float = 1.5,
+    allow_no_yunet: bool = False,
 ) -> dict:
     from ultralytics import YOLO  # 무거워서 쓸 때만 불러온다
 
     src, out = Path(src), Path(out)
+    # 올리는 것이 실제 행인 사진이라, 얼굴 검출기 없이는 기본으로 돌지 않는다.
+    # YuNet 유무가 못 찾은 프레임 비율을 크게 바꾼다(R6_04 에서 약 39% <-> 15%).
+    # 결과 폴더를 만들기 전에 확인해서, 멈췄을 때 빈 폴더가 남지 않게 한다.
+    if not allow_no_yunet and not (yunet and Path(yunet).exists()):
+        reason = "--yunet 을 안 줬다" if not yunet else f"얼굴 검출기 모델이 없다: {yunet}"
+        raise FileNotFoundError(
+            f"{reason}. 얼굴 검출기(face_detection_yunet_2023mar.onnx) 없이 올리면 얼굴이 더 많이 남는다. "
+            "--yunet <모델.onnx> 를 주거나, 알고도 YOLO 머리 모자이크만 쓰려면 --allow-no-yunet 을 준다"
+        )
     if out.exists():
         raise FileExistsError(f"이미 있다: {out} (지우고 다시 실행)")
     paths = sorted(p for p in src.iterdir() if p.suffix.lower() in IMAGE_EXTS)
@@ -65,51 +83,87 @@ def blur_folder(
     face = None
     if yunet and Path(yunet).exists():
         face = cv2.FaceDetectorYN.create(yunet, "", (320, 320), 0.4, 0.3, 5000)
-    elif yunet:
-        print(f"[얼굴 검출기 모델 없음: {yunet}] YOLO 머리 모자이크만 한다.")
     else:
         print(
-            "[--yunet 을 안 줬다] YOLO 머리 모자이크만 한다. 얼굴 검출기를 켜는 것이 안전하다."
+            "[--allow-no-yunet] 얼굴 검출기 없이 YOLO 머리 모자이크만 한다. "
+            "못 찾는 얼굴이 더 많으니 결과 사진을 더 꼼꼼히 본다."
         )
 
-    heads = faces = 0
-    for p in paths:
-        img = cv2.imdecode(np.fromfile(str(p), dtype=np.uint8), cv2.IMREAD_COLOR)
-        h, w = img.shape[:2]
-        res = detector.predict(img, conf=conf, imgsz=imgsz, classes=[0], verbose=False)[
-            0
-        ]
+    table = None
+    if detect_gamma and detect_gamma > 0:
+        table = np.array(
+            [((i / 255.0) ** (1.0 / detect_gamma)) * 255 for i in range(256)],
+            dtype=np.uint8,
+        )
+
+    def find(variant, w, h):
+        """사진 한 장에서 사람 머리 영역과 얼굴을 찾아 [(x1,y1,x2,y2), ...] 로 돌려준다."""
+        regions = []
+        res = detector.predict(
+            variant, conf=conf, imgsz=imgsz, classes=[0], verbose=False
+        )[0]
         for x1, y1, x2, y2 in res.boxes.xyxy.cpu().numpy():
             bw, bh = x2 - x1, y2 - y1
             head_h = max(
                 0.30 * bh, 0.6 * bw
             )  # 박스 위쪽 30% (키가 작게 잡혔을 때를 위해 폭 기준도 둔다)
-            pixelate(
-                img,
-                int(x1 - 0.15 * bw),
-                int(y1 - 0.10 * head_h),
-                int(x2 + 0.15 * bw),
-                int(y1 + head_h),
+            regions.append(
+                (
+                    "head",
+                    int(x1 - 0.15 * bw),
+                    int(y1 - 0.10 * head_h),
+                    int(x2 + 0.15 * bw),
+                    int(y1 + head_h),
+                )
             )
-            heads += 1
         if face is not None:
             face.setInputSize((w, h))
-            _, found = face.detect(img)
+            _, found = face.detect(variant)
             for f in found if found is not None else []:
                 fx, fy, fw, fh = f[:4]
-                pixelate(
-                    img,
-                    int(fx - 0.2 * fw),
-                    int(fy - 0.2 * fh),
-                    int(fx + 1.2 * fw),
-                    int(fy + 1.2 * fh),
+                regions.append(
+                    (
+                        "face",
+                        int(fx - 0.2 * fw),
+                        int(fy - 0.2 * fh),
+                        int(fx + 1.2 * fw),
+                        int(fy + 1.2 * fh),
+                    )
                 )
+        return regions
+
+    heads = faces = 0
+    no_detection: list[str] = []
+    for p in paths:
+        img = cv2.imdecode(np.fromfile(str(p), dtype=np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            raise RuntimeError(f"사진을 못 읽는다: {p.name}")
+        h, w = img.shape[:2]
+        regions = find(img, w, h)
+        if table is not None:
+            regions += find(cv2.LUT(img, table), w, h)  # 찾는 데만 쓰고 저장은 원본에
+        for kind, x1, y1, x2, y2 in regions:
+            pixelate(img, x1, y1, x2, y2)
+            if kind == "head":
+                heads += 1
+            else:
                 faces += 1
+        if not regions:
+            no_detection.append(p.name)
         ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 95])
         if not ok:
             raise RuntimeError(f"인코딩 실패: {p.name}")
         buf.tofile(str(out / (p.stem + ".jpg")))  # 한글 경로에서도 되도록 tofile
-    return {"images": len(paths), "heads": heads, "faces": faces, "out": str(out)}
+    report = out.parent / f"{out.name}_no_detection.txt"
+    report.write_text("\n".join(no_detection) + ("\n" if no_detection else ""), encoding="utf-8")
+    return {
+        "images": len(paths),
+        "heads": heads,
+        "faces": faces,
+        "no_detection": len(no_detection),
+        "no_detection_list": str(report),
+        "out": str(out),
+    }
 
 
 def main() -> None:
@@ -122,16 +176,39 @@ def main() -> None:
     parser.add_argument("--conf", type=float, default=0.05)
     parser.add_argument("--imgsz", type=int, default=960)
     parser.add_argument(
-        "--yunet", default=None, help="face_detection_yunet_2023mar.onnx 경로"
+        "--yunet",
+        default=None,
+        help="face_detection_yunet_2023mar.onnx 경로 (없으면 --allow-no-yunet 이 있어야 돈다)",
+    )
+    parser.add_argument(
+        "--allow-no-yunet",
+        action="store_true",
+        help="얼굴 검출기 없이 YOLO 머리 모자이크만 쓰는 것을 알고 허용한다",
+    )
+    parser.add_argument(
+        "--detect-gamma",
+        type=float,
+        default=1.5,
+        help="찾는 데만 쓰는 밝히기 감마(저장은 원본). 0이면 끈다",
     )
     args = parser.parse_args()
     result = blur_folder(
-        args.src, args.out, args.model, args.conf, args.imgsz, args.yunet
+        args.src,
+        args.out,
+        args.model,
+        args.conf,
+        args.imgsz,
+        args.yunet,
+        args.detect_gamma,
+        args.allow_no_yunet,
     )
     print(
         f"사진 {result['images']}장: 사람 머리 {result['heads']}곳 + 얼굴 {result['faces']}곳을 모자이크 -> {result['out']}"
     )
-    print("결과 사진을 눈으로 확인한 뒤 올린다.")
+    print(
+        f"[확인] 한 곳도 못 찾은 프레임 {result['no_detection']}장 -> {result['no_detection_list']}"
+    )
+    print("그 목록의 사진을 눈으로 확인한 뒤 올린다.")
 
 
 if __name__ == "__main__":
