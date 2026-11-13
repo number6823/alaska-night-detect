@@ -26,15 +26,16 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler eval [--images data/g
 
 데이터셋 나누기 (검수를 마친 라벨을 train/val로 나눠 `data\dataset\`과 `data.yaml`을 만든다):
 ```
-C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset] [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5]
+C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset] [--val-ratio 0.2] [--seed 0] [--group-by video] [--exclude-rounds R5] [--all-train]
 ```
 - `run`·`eval`과 달리 하위 명령이 아니라 모듈을 바로 부른다(`-m labeler.split`)
 - 라벨 txt가 있는 사진만 넣는다. 폐기된 사진(txt 없음)은 빠진다
 - gt100과 gt100 v2는 평가 전용이라 넣지 않는다
-- `--group-by round`: 후방 영상 프레임은 같은 영상이 train과 val에 나뉘어 들어가면 val 점수가 실제보다 좋게 나온다. 이 옵션을 주면 사진 한 장씩이 아니라 라운드 단위로 나눈다. 라운드는 파일 이름 안의 `_R1_`로 읽는다(촬영 파일명 `20261112_R1_01_보행접근.mp4` 기준). 라운드 표시가 없는 사진(collector가 모은 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
+- `--group-by video|round`: 후방 영상 프레임은 같은 영상이 train과 val에 나뉘어 들어가면 val 점수가 실제보다 좋게 나온다. 이 옵션을 주면 사진 한 장씩이 아니라 묶음 단위로 나눈다. `video`는 영상 하나(`_R6_01_`), `round`는 라운드 전체(`_R6_`)를 한 묶음으로 본다. **한 라운드에 영상이 여러 개면 `video`를 쓴다.** `round`로 묶으면 그 라운드가 통째로 한쪽으로 가서 val에 영상 프레임이 한 장도 없을 수 있다(11/13 v4에서 실제로 R6 197장이 전부 train으로 갔다). 라운드 표시가 없는 사진(collector가 모은 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
 - `--exclude-rounds`: 평가 전용 라운드를 아예 뺀다. 기본값 `R5`이며 `--group-by`와 상관없이 적용한다(학습에 섞이면 평가를 못 쓰게 되므로). 빼지 않으려면 값 없이 `--exclude-rounds`
 - 라운드가 적어 val이 0묶음이 되면 1묶음은 val로 보낸다(val이 비면 학습이 안 돈다)
 - `--max-background-ratio`(기본 **0.1**): 빈 txt 사진(배경)이 최종 세트에서 차지할 **상한**. 넘으면 `seed` 로 무작위로 덜어낸다. 배경이 너무 많으면 모델이 "아무것도 없다" 쪽으로 치우친다
+- `--all-train`: val을 떼지 않고 **전부 train에 넣는다**. 최적 에포크를 이미 정한 뒤 마지막으로 한 번 더 학습할 때만 쓴다. Ultralytics가 `val` 키를 요구하므로 `data.yaml`의 `val`은 `images/train`을 가리킨다. **그래서 학습 중 나오는 val 점수는 학습에 쓴 사진으로 잰 것이라 성능이 아니다.** 조기 종료도 뜻이 없으니 `--epochs`를 정해 두고 돌린다. `--exclude-rounds`(기본 `R5`)는 그대로 적용돼서 평가 전용 라운드는 여기서도 빠진다
 - `--portable`: `data.yaml`에 절대 경로(`path:`)를 넣지 않는다. Ultralytics는 `path`가 없으면 `data.yaml`이 있는 폴더를 기준으로 삼으므로, 폴더째 Colab이나 다른 PC로 옮겨도 그대로 돌아간다. 내 PC에서만 쓸 때는 필요 없다
 - `--out` 폴더가 이미 있으면 `FileExistsError`로 멈춘다. 지난 결과와 섞이지 않게 하려는 것이니 다시 나누려면 폴더를 직접 지운다
 - 사진과 라벨은 `out\images\{train,val}`, `out\labels\{train,val}`로 복사한다. `data\images\`의 원본은 그대로 둔다
@@ -50,11 +51,12 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/
 - `review_queue.csv` 열: `filename,status,boxes,low_conf_boxes,min_conf` (status = `review` / `discard`, 자동 통과는 기록 안 함)
 
 ## 함수 규약 (split, training 호출)
-`split_dataset(images_dir="data/images", labels_dir="data/labels", out_dir="data/dataset", val_ratio=0.2, seed=0, group_by=None, exclude_rounds=("R5",), portable=False) -> dict`
-- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수), `group_by`, `excluded_rounds`(뺀 라운드별 장수), `background`(넣은 배경 장수), `background_dropped`(상한 때문에 덜어낸 장수), `background_ratio`, `groups`(`group_by="round"`일 때만, train/val에 들어간 라운드 이름)
+`split_dataset(images_dir="data/images", labels_dir="data/labels", out_dir="data/dataset", val_ratio=0.2, seed=0, group_by=None, exclude_rounds=("R5",), portable=False, max_background_ratio=0.1, all_train=False) -> dict`
+- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수), `group_by`, `excluded_rounds`(뺀 라운드별 장수), `background`(넣은 배경 장수), `background_dropped`(상한 때문에 덜어낸 장수), `background_ratio`, `all_train`, `groups`(`group_by`를 줬을 때만, train/val에 들어간 묶음 이름)
 - `seed`로 섞는 순서를 고정한다. 같은 입력이면 같게 나뉜다
 - `group_by=None`(기본)은 사진 한 장 단위로 나눈다. 전과 같은 동작이다
-- `group_by="round"`는 라운드 단위로 나눈다. 영상 프레임을 넣을 때 쓴다
+- `group_by="video"`는 영상 단위, `"round"`는 라운드 단위로 나눈다. 영상 프레임을 넣을 때 쓴다
+- `all_train=True`면 `parts`에 val이 없고 `val`은 0이다. `groups`도 나오지 않는다
 - agent가 아니라 `training/train.py`가 쓴다. 경로·반환을 바꿀 때는 training 쪽과 먼저 맞춘다
 
 Roboflow export 가져오기 (검수한 라벨을 우리 형식으로 되돌린다):

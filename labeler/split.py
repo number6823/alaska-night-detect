@@ -2,6 +2,7 @@
 
 실행: python -m labeler.split [--images data/images] [--labels data/labels] [--out data/dataset]
                              [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5] [--portable]
+                             [--all-train]
 - 라벨 txt가 있는 사진만 쓴다. 폐기된 사진(txt 없음)은 넣지 않는다.
 - gt100은 평가 전용이라 여기에 넣지 않는다.
 - 빈 txt 가 있는 사진은 배경(물체 없음)으로 학습에 들어간다. --max-background-ratio 로 비율을 제한한다.
@@ -9,6 +10,8 @@
   `--group-by video`를 주면 영상(_R6_01_) 단위로, `round`를 주면 라운드(_R6_) 단위로 나눈다.
   한 라운드에 영상이 여러 개면 `video` 를 써야 한다. `round` 로 묶으면 그 라운드가
   통째로 한쪽으로 가서 val 에 영상 프레임이 한 장도 없을 수 있다.
+- `--all-train` 은 val 을 떼지 않고 전부 학습에 넣는다. 최적 에포크를 이미 안 뒤 마지막으로
+  한 번 더 학습할 때만 쓴다. 이때 나오는 val 점수는 학습에 쓴 사진으로 잰 것이라 쓰지 않는다.
 """
 import argparse
 import json
@@ -47,7 +50,8 @@ def video_of(stem: str) -> str | None:
 def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path = "data/labels",
                   out_dir: str | Path = "data/dataset", val_ratio: float = 0.2, seed: int = 0,
                   group_by: str | None = None, exclude_rounds: tuple[str, ...] = ("R5",),
-                  portable: bool = False, max_background_ratio: float = 0.1) -> dict:
+                  portable: bool = False, max_background_ratio: float = 0.1,
+                  all_train: bool = False) -> dict:
     images_dir, labels_dir, out_dir = Path(images_dir), Path(labels_dir), Path(out_dir)
     if group_by not in (None, "round", "video"):
         raise ValueError(f"group_by는 None, 'round', 'video' 중 하나다: {group_by!r}")
@@ -85,7 +89,13 @@ def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path
         pairs = labeled + backgrounds
         pairs.sort(key=lambda p: p[0].name)  # seed 를 쓰기 전에 순서를 되돌려 재현되게 한다
 
-    if group_by in ("round", "video"):
+    if all_train:
+        # val 을 떼지 않는다. 최적 에포크를 이미 정한 뒤 마지막 학습에만 쓴다.
+        # Ultralytics 는 val 경로가 없으면 학습을 시작하지 않으므로 data.yaml 의 val 은
+        # train 을 가리키게 한다(아래). 그 점수는 학습에 쓴 사진이라 성능이 아니다.
+        chosen = None
+        parts = {"train": [(img, txt) for img, txt, _ in pairs]}
+    elif group_by in ("round", "video"):
         # 묶음 키가 없는 사진(수집 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
         key_of = round_of if group_by == "round" else video_of
         groups: dict[str, list] = {}
@@ -125,14 +135,17 @@ def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path
     # (ultralytics/data/utils.py: path = data.get("path") or Path(yaml_file).parent)
     # 폴더째 Colab이나 다른 PC로 옮겨도 그대로 돌아간다.
     head = "" if portable else f"path: {out_dir.resolve().as_posix()}\n"
+    # all_train 이면 val 폴더가 없다. Ultralytics 가 val 키를 요구하므로 train 을 가리킨다
+    val_line = "images/train" if all_train else "images/val"
     yaml_path.write_text(
-        f"{head}train: images/train\nval: images/val\nnames:\n{names}\n",
+        f"{head}train: images/train\nval: {val_line}\nnames:\n{names}\n",
         encoding="utf-8",
     )
     result = {
         "data_yaml": str(yaml_path),
         "train": len(parts["train"]),
-        "val": len(parts["val"]),
+        "val": len(parts.get("val", [])),
+        "all_train": all_train,
         "boxes": boxes,
         "group_by": group_by,
         "excluded_rounds": {r: n for r, n in excluded.items() if n},
@@ -162,11 +175,15 @@ def main() -> None:
                         help="data.yaml에 절대 경로를 넣지 않는다. 폴더째 Colab 등으로 옮겨 쓸 때")
     parser.add_argument("--max-background-ratio", type=float, default=0.1,
                         help="빈 라벨(배경) 사진이 전체에서 차지할 상한. 넘으면 무작위로 덜어낸다")
+    parser.add_argument("--all-train", action="store_true",
+                        help="val을 떼지 않고 전부 학습에 넣는다. 최적 에포크를 정한 뒤 마지막 학습에만 쓴다")
     args = parser.parse_args()
-    print(json.dumps(split_dataset(args.images, args.labels, args.out, args.val_ratio, args.seed,
-                                   args.group_by, tuple(args.exclude_rounds), args.portable,
-                                   args.max_background_ratio),
-                     ensure_ascii=False))
+    result = split_dataset(args.images, args.labels, args.out, args.val_ratio, args.seed,
+                           args.group_by, tuple(args.exclude_rounds), args.portable,
+                           args.max_background_ratio, args.all_train)
+    print(json.dumps(result, ensure_ascii=False))
+    if args.all_train:
+        print("[확인] val을 떼지 않았다. 학습 중 나오는 val 점수는 학습에 쓴 사진으로 잰 것이라 성능이 아니다")
 
 
 if __name__ == "__main__":
