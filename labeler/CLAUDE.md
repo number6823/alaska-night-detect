@@ -34,6 +34,7 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/
 - `--group-by round`: 후방 영상 프레임은 같은 영상이 train과 val에 나뉘어 들어가면 val 점수가 실제보다 좋게 나온다. 이 옵션을 주면 사진 한 장씩이 아니라 라운드 단위로 나눈다. 라운드는 파일 이름 안의 `_R1_`로 읽는다(촬영 파일명 `20261112_R1_01_보행접근.mp4` 기준). 라운드 표시가 없는 사진(collector가 모은 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
 - `--exclude-rounds`: 평가 전용 라운드를 아예 뺀다. 기본값 `R5`이며 `--group-by`와 상관없이 적용한다(학습에 섞이면 평가를 못 쓰게 되므로). 빼지 않으려면 값 없이 `--exclude-rounds`
 - 라운드가 적어 val이 0묶음이 되면 1묶음은 val로 보낸다(val이 비면 학습이 안 돈다)
+- `--max-background-ratio`(기본 **0.1**): 빈 txt 사진(배경)이 최종 세트에서 차지할 **상한**. 넘으면 `seed` 로 무작위로 덜어낸다. 배경이 너무 많으면 모델이 "아무것도 없다" 쪽으로 치우친다
 - `--portable`: `data.yaml`에 절대 경로(`path:`)를 넣지 않는다. Ultralytics는 `path`가 없으면 `data.yaml`이 있는 폴더를 기준으로 삼으므로, 폴더째 Colab이나 다른 PC로 옮겨도 그대로 돌아간다. 내 PC에서만 쓸 때는 필요 없다
 - `--out` 폴더가 이미 있으면 `FileExistsError`로 멈춘다. 지난 결과와 섞이지 않게 하려는 것이니 다시 나누려면 폴더를 직접 지운다
 - 사진과 라벨은 `out\images\{train,val}`, `out\labels\{train,val}`로 복사한다. `data\images\`의 원본은 그대로 둔다
@@ -50,7 +51,7 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.split [--images data/
 
 ## 함수 규약 (split, training 호출)
 `split_dataset(images_dir="data/images", labels_dir="data/labels", out_dir="data/dataset", val_ratio=0.2, seed=0, group_by=None, exclude_rounds=("R5",), portable=False) -> dict`
-- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수), `group_by`, `excluded_rounds`(뺀 라운드별 장수), `groups`(`group_by="round"`일 때만, train/val에 들어간 라운드 이름)
+- 반환: `data_yaml`(만든 yaml 경로), `train`·`val`(각 장수), `boxes`(train/val 각각 person·bicycle 박스 수), `group_by`, `excluded_rounds`(뺀 라운드별 장수), `background`(넣은 배경 장수), `background_dropped`(상한 때문에 덜어낸 장수), `background_ratio`, `groups`(`group_by="round"`일 때만, train/val에 들어간 라운드 이름)
 - `seed`로 섞는 순서를 고정한다. 같은 입력이면 같게 나뉜다
 - `group_by=None`(기본)은 사진 한 장 단위로 나눈다. 전과 같은 동작이다
 - `group_by="round"`는 라운드 단위로 나눈다. 영상 프레임을 넣을 때 쓴다
@@ -68,10 +69,17 @@ C:\Users\Woori\anaconda3\envs\alaska\python.exe -m labeler.from_roboflow <export
 - 빈 라벨은 txt 를 만들지 않는다(폐기 규칙과 같게)
 - `--copy-images`: 사진 폴더에 없는 사진을 export 에서 가져온다
 - `--out-reviewed`: 이번에 들어온 라벨만 따로 한 벌 더 쓴다. `labeler.split --labels` 에 바로 넘기려는 용도
+- `--keep-empty`: 빈 라벨을 **빈 txt** 로 남긴다. YOLO 는 빈 txt 를 "물체 없음"으로 읽어 그 사진을 **배경**으로 쓴다
+
+### 빈 라벨을 배경으로 쓰는 규칙 (2026-11-13, 최수창 합의)
+- **진짜 아무도 없는 프레임만** Roboflow 에서 빈 라벨(Mark Null)로 둔다
+- **사람이 있는데 어두워서 안 보이는 프레임은 Dataset 에서 뺀다.** 애매하면 뺀다
+- 그래서 빈 txt 는 전부 배경으로 취급해도 된다. 안 보이는 사람을 배경으로 넣으면 "여기 사람 없다"를 잘못 가르친다
+- 배경이 필요한 이유: 촬영 계획의 `빈장면` 클립이 노리는 것이 오탐 줄이기다. `training/rear_report.py` 가 그 오탐 프레임 수를 센다
 
 ## 함수 규약 (from_roboflow)
 `import_export(export_dir, labels_dir="data/labels", images_dir="data/images", copy_images=False, out_reviewed=None) -> dict`
-- 반환: `export_names`(export의 클래스 순서), `flipped`(뒤집었는지), `labels`(쓴 장수), `boxes`, `person`, `bicycle`, `empty`(빈 라벨), `images_copied`, `skipped_no_image`, `unnamed`(`.rf` 꼬리표가 없어 건너뛴 파일)
+- 반환: `export_names`(export의 클래스 순서), `flipped`(뒤집었는지), `labels`(쓴 장수), `boxes`, `person`, `bicycle`, `empty`(빈 라벨), `background_kept`(배경으로 남긴 장수), `images_copied`, `skipped_no_image`, `unnamed`(`.rf` 꼬리표가 없어 건너뛴 파일)
 - `original_name(stem)`: `이름_jpg.rf.해시` → `("이름", "jpg")`. 꼬리표가 없으면 `None`
 - `read_class_order(export_dir)`: `data.yaml` 의 클래스 이름을 번호 순서대로 읽는다(한 줄 `names: [...]` 와 여러 줄 `0: person` 둘 다 지원)
 

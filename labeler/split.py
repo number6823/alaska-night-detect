@@ -4,6 +4,7 @@
                              [--val-ratio 0.2] [--seed 0] [--group-by round] [--exclude-rounds R5] [--portable]
 - 라벨 txt가 있는 사진만 쓴다. 폐기된 사진(txt 없음)은 넣지 않는다.
 - gt100은 평가 전용이라 여기에 넣지 않는다.
+- 빈 txt 가 있는 사진은 배경(물체 없음)으로 학습에 들어간다. --max-background-ratio 로 비율을 제한한다.
 - 후방 영상 프레임은 같은 영상이 train과 val에 섞이면 val 점수가 올라가 보인다.
   `--group-by round`를 주면 사진 한 장씩이 아니라 라운드 단위로 나눈다.
 """
@@ -30,7 +31,7 @@ def round_of(stem: str) -> str | None:
 def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path = "data/labels",
                   out_dir: str | Path = "data/dataset", val_ratio: float = 0.2, seed: int = 0,
                   group_by: str | None = None, exclude_rounds: tuple[str, ...] = ("R5",),
-                  portable: bool = False) -> dict:
+                  portable: bool = False, max_background_ratio: float = 0.1) -> dict:
     images_dir, labels_dir, out_dir = Path(images_dir), Path(labels_dir), Path(out_dir)
     if group_by not in (None, "round"):
         raise ValueError(f"group_by는 None이나 'round'만 된다: {group_by!r}")
@@ -50,6 +51,23 @@ def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path
             excluded[rnd] += 1
             continue
         pairs.append((img, txt, rnd))
+
+    # 빈 txt = 배경 사진(물체 없음). 너무 많으면 모델이 "아무것도 없다"에 치우치므로 상한을 둔다.
+    # 팀 규칙(2026-11-13): 진짜 아무도 없는 프레임만 빈 라벨로 두므로 빈 txt 는 전부 배경이다.
+    labeled = [p for p in pairs if p[1].stat().st_size > 0]
+    backgrounds = [p for p in pairs if p[1].stat().st_size == 0]
+    dropped_background = 0
+    if backgrounds:
+        r = max(0.0, min(1.0, max_background_ratio))
+        # 최종 세트에서 배경이 r 을 넘지 않게: keep / (labeled + keep) <= r
+        allowed = len(labeled) * r / (1 - r) if r < 1 else len(backgrounds)
+        keep = min(len(backgrounds), int(allowed))
+        if keep < len(backgrounds):
+            random.Random(seed).shuffle(backgrounds)
+            dropped_background = len(backgrounds) - keep
+            backgrounds = backgrounds[:keep]
+        pairs = labeled + backgrounds
+        pairs.sort(key=lambda p: p[0].name)  # seed 를 쓰기 전에 순서를 되돌려 재현되게 한다
 
     if group_by == "round":
         # 라운드가 없는 사진(수집 사진)은 한 장이 한 묶음이라 전과 같게 나뉜다
@@ -101,6 +119,9 @@ def split_dataset(images_dir: str | Path = "data/images", labels_dir: str | Path
         "boxes": boxes,
         "group_by": group_by,
         "excluded_rounds": {r: n for r, n in excluded.items() if n},
+        "background": len(backgrounds),
+        "background_dropped": dropped_background,
+        "background_ratio": round(len(backgrounds) / len(pairs), 4) if pairs else 0.0,
     }
     if chosen is not None:
         # 어느 라운드가 val로 갔는지 남겨야 나중에 같은 분할인지 확인할 수 있다
@@ -121,9 +142,12 @@ def main() -> None:
                         help="아예 빼는 평가 전용 라운드. 빼지 않으려면 값 없이 --exclude-rounds")
     parser.add_argument("--portable", action="store_true",
                         help="data.yaml에 절대 경로를 넣지 않는다. 폴더째 Colab 등으로 옮겨 쓸 때")
+    parser.add_argument("--max-background-ratio", type=float, default=0.1,
+                        help="빈 라벨(배경) 사진이 전체에서 차지할 상한. 넘으면 무작위로 덜어낸다")
     args = parser.parse_args()
     print(json.dumps(split_dataset(args.images, args.labels, args.out, args.val_ratio, args.seed,
-                                   args.group_by, tuple(args.exclude_rounds), args.portable),
+                                   args.group_by, tuple(args.exclude_rounds), args.portable,
+                                   args.max_background_ratio),
                      ensure_ascii=False))
 
 
