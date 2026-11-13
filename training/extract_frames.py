@@ -15,6 +15,8 @@ from pathlib import Path
 
 import cv2
 
+from .image_io import write_image
+
 VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".m4v"}
 NAME_RE = re.compile(r"^(?P<date>\d{8})_(?P<round>R\d+)_(?P<no>\d+)_(?P<name>.+)$")
 
@@ -38,10 +40,8 @@ def _open(path: Path):
 
 
 def _save(path: Path, frame) -> None:
-    ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
-    if not ok:
-        raise RuntimeError(f"프레임 인코딩 실패: {path}")
-    buf.tofile(str(path))  # imwrite는 한글 경로에서 실패할 수 있어 tofile을 쓴다
+    # imwrite는 한글 경로에서 조용히 실패한다. training/image_io.py 가 그 처리를 모아 둔다
+    write_image(path, frame, [cv2.IMWRITE_JPEG_QUALITY, 92])
 
 
 def extract(videos: str, out: str, fps: float = 2.0, eval_rounds=("R5",)) -> Path:
