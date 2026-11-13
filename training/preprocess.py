@@ -22,6 +22,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .image_io import read_image, write_image
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 METHODS = ("gamma", "clahe", "both")
 
@@ -67,6 +69,7 @@ def preprocess_dir(src: str | Path, dst: str | Path, method: str = "gamma", gamm
 
     보정은 화소만 건드리고 박스 위치는 그대로라, 라벨은 그냥 복사하면 된다.
     labels_src 를 주면 같은 이름의 txt 를 labels_dst 로 복사한다(학습/평가에 바로 쓰려고).
+    못 읽은 사진은 조용히 넘기지 않고 세어서 `skipped_unreadable` 로 돌려준다.
     """
     src, dst = Path(src), Path(dst)
     dst.mkdir(parents=True, exist_ok=True)
@@ -76,15 +79,18 @@ def preprocess_dir(src: str | Path, dst: str | Path, method: str = "gamma", gamm
         labels_dst.mkdir(parents=True, exist_ok=True)
 
     n = copied = 0
+    unreadable: list[str] = []
     before = after = 0.0
     for p in sorted(src.iterdir()):
         if p.suffix.lower() not in IMAGE_EXTS:
             continue
-        img = cv2.imread(str(p))
+        img = read_image(p)
         if img is None:
+            # 한 장이라도 빠지면 보정본과 원본의 장수가 달라져 평가가 어긋난다
+            unreadable.append(p.name)
             continue
         out = enhance(img, method, gamma, clip, grid)
-        cv2.imwrite(str(dst / p.name), out)
+        write_image(dst / p.name, out)
         before += mean_brightness(img)
         after += mean_brightness(out)
         n += 1
@@ -93,7 +99,8 @@ def preprocess_dir(src: str | Path, dst: str | Path, method: str = "gamma", gamm
             if txt.exists():
                 (labels_dst / txt.name).write_text(txt.read_text(encoding="utf-8"), encoding="utf-8")
                 copied += 1
-    return {"images": n, "labels_copied": copied, "method": method,
+    return {"images": n, "labels_copied": copied,
+            "skipped_unreadable": len(unreadable), "unreadable": unreadable[:5], "method": method,
             "gamma": gamma, "clip": clip, "grid": grid,
             "mean_brightness_before": round(before / n, 2) if n else 0.0,
             "mean_brightness_after": round(after / n, 2) if n else 0.0}
@@ -110,8 +117,11 @@ def main() -> None:
     parser.add_argument("--labels", default=None, help="같이 복사할 라벨 폴더")
     parser.add_argument("--labels-out", default=None, help="라벨을 쓸 폴더 (기본: dst 옆 labels)")
     args = parser.parse_args()
-    print(json.dumps(preprocess_dir(args.src, args.dst, args.method, args.gamma, args.clip,
-                                    args.grid, args.labels, args.labels_out), ensure_ascii=False))
+    r = preprocess_dir(args.src, args.dst, args.method, args.gamma, args.clip,
+                       args.grid, args.labels, args.labels_out)
+    print(json.dumps(r, ensure_ascii=False))
+    if r["skipped_unreadable"]:
+        print(f"[확인] 못 읽어서 빠진 사진 {r['skipped_unreadable']}장: {r['unreadable']}")
 
 
 if __name__ == "__main__":

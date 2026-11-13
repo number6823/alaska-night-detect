@@ -26,6 +26,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from .image_io import read_image, write_image
+
 IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 
 
@@ -59,6 +61,7 @@ def darken_dir(images: str | Path, labels: str | Path | None = None, factor: flo
     - min_brightness 를 주면 그보다 밝은 사진만 어둡게 한다. 이미 깜깜한 프레임까지
       더 어둡게 만들면 사람이 아예 안 보이는 사진이 라벨만 달고 들어간다.
     - 이미 suffix 가 붙은 파일은 건너뛴다(두 번 돌려도 네 배가 되지 않게).
+    - 못 읽은 사진은 조용히 넘기지 않고 세어서 `skipped_unreadable` 로 돌려준다.
     """
     images = Path(images)
     if images.name == "val":
@@ -71,6 +74,7 @@ def darken_dir(images: str | Path, labels: str | Path | None = None, factor: flo
         out_labels.mkdir(parents=True, exist_ok=True)
 
     made = skipped_bright = skipped_suffix = no_label = 0
+    unreadable: list[str] = []
     before = after = 0.0
     for i, p in enumerate(sorted(images.iterdir())):
         if p.suffix.lower() not in IMAGE_EXTS:
@@ -78,8 +82,10 @@ def darken_dir(images: str | Path, labels: str | Path | None = None, factor: flo
         if p.stem.endswith(suffix):
             skipped_suffix += 1
             continue
-        img = cv2.imread(str(p))
+        img = read_image(p)
         if img is None:
+            # 조용히 빠지면 "어둡게 만들었다"고 믿은 사진이 실제로는 안 들어간다
+            unreadable.append(p.name)
             continue
         b = mean_brightness(img)
         if b < min_brightness:
@@ -87,7 +93,7 @@ def darken_dir(images: str | Path, labels: str | Path | None = None, factor: flo
             continue
         # 사진마다 다른 노이즈를 주되 다시 돌리면 같게 나오도록 seed 를 섞는다
         out = darken(img, factor, gamma, noise, seed=seed + i)
-        cv2.imwrite(str(out_images / f"{p.stem}{suffix}{p.suffix}"), out)
+        write_image(out_images / f"{p.stem}{suffix}{p.suffix}", out)
         before += b
         after += mean_brightness(out)
         made += 1
@@ -100,6 +106,7 @@ def darken_dir(images: str | Path, labels: str | Path | None = None, factor: flo
                 no_label += 1
     return {"made": made, "skipped_already_dark": skipped_suffix,
             "skipped_too_dark": skipped_bright, "missing_label": no_label,
+            "skipped_unreadable": len(unreadable), "unreadable": unreadable[:5],
             "factor": factor, "gamma": gamma, "noise": noise, "suffix": suffix,
             "mean_brightness_before": round(before / made, 2) if made else 0.0,
             "mean_brightness_after": round(after / made, 2) if made else 0.0}
@@ -123,6 +130,8 @@ def main() -> None:
                    args.out_images, args.out_labels, args.min_brightness, args.seed)
     print(json.dumps(r, ensure_ascii=False))
     print(f"[확인] 평균 밝기 {r['mean_brightness_before']} → {r['mean_brightness_after']}")
+    if r["skipped_unreadable"]:
+        print(f"[확인] 못 읽어서 빠진 사진 {r['skipped_unreadable']}장: {r['unreadable']}")
 
 
 if __name__ == "__main__":
