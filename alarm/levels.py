@@ -14,9 +14,13 @@ PC 에서 시험할 수 있게 일부러 순수 함수로 만들었다.
   그래서 박스 아래 끝의 높이(0=맨 위, 1=맨 아래)만 보고 거리를 3단계로 나눈다. 정확한 거리 측정이 아니다.
 - 기준값(Calibration)은 거리 기준 영상(촬영 계획표 9번: 5.5m → 3m → 2m 위에 차례로 서기)에서
   발 위치를 재서 `calibrate_from_samples` 로 만든다. 카메라 높이를 바꾸면 다시 만든다.
+- 잰 값은 코드에 박지 않고 `save_calibration`/`load_calibration` 으로 JSON 파일에 둔다.
+  `calibration.example.json` 은 `estimate_calibration` 의 **추정치 예시**이고 실측값이 아니다.
 - 영상으로 재기 전 임시값이 필요하면 `estimate_calibration` 으로 기하학 계산값을 얻는다.
   이 값은 렌즈 화각을 가정한 **추정**이라 실제 영상으로 반드시 보정한다.
 - 발이 화면 아래에서 잘린 박스는 아주 가깝다고 보고 3단계(2m 이내)로 처리한다.
+- 한계: 자전거를 탄 사람은 발이 페달 위(바닥보다 높은 곳)에 있어서 실제보다 멀게 읽힌다. 자전거 박스를 잡으면
+  바퀴가 바닥에 닿아 정확하지만, 어두워서 자전거를 놓치고 사람만 잡으면 단계가 늦게(낮게) 나온다.
 
 경보를 언제 내나 — 연속 프레임
 - 한 프레임에서 잠깐 잡힌 것으로 울리지 않게 최근 `window` 프레임 중 `need` 번 이상 그 단계 이상이
@@ -27,9 +31,11 @@ PC 에서 시험할 수 있게 일부러 순수 함수로 만들었다.
 
 from __future__ import annotations
 
+import json
 import math
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, fields
+from pathlib import Path
 from typing import Iterable, Sequence
 
 LEVEL_NAMES = {0: "없음", 1: "5.5m 이내", 2: "3m 이내", 3: "2m 이내"}
@@ -62,6 +68,27 @@ class Calibration:
                 f"{self.foot_5_5}, {self.foot_3}, {self.foot_2}"
             )
 
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Calibration:
+        """저장한 기준값(JSON 에서 읽은 dict)으로 되돌린다. 모르는 키는 무시한다."""
+        names = {f.name for f in fields(cls)}
+        return cls(**{k: v for k, v in data.items() if k in names})
+
+
+def save_calibration(cal: Calibration, path: str | Path) -> None:
+    """기준값을 JSON 파일로 저장한다. 거리 기준 영상으로 잰 값을 코드가 아니라 파일에 둔다."""
+    Path(path).write_text(
+        json.dumps(cal.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def load_calibration(path: str | Path) -> Calibration:
+    """JSON 파일에서 기준값을 읽는다. 경계 값은 코드에 박지 않고 이 파일에서 온다."""
+    return Calibration.from_dict(json.loads(Path(path).read_text(encoding="utf-8")))
+
 
 def estimate_calibration(
     camera_height_m: float = 0.7,
@@ -85,9 +112,7 @@ def estimate_calibration(
         theta = math.atan(camera_height_m / d) - math.radians(tilt_deg)
         ys.append(0.5 + math.tan(theta) / (2 * half))
     ys = [min(1.0, max(0.0, y)) for y in ys]
-    return Calibration(
-        ys[0], ys[1], ys[2], frame_height, round(camera_height_m * 100)
-    )
+    return Calibration(ys[0], ys[1], ys[2], frame_height, round(camera_height_m * 100))
 
 
 def _median(values: Sequence[float]) -> float:
@@ -102,13 +127,21 @@ def calibrate_from_samples(
     samples_2: Sequence[Box],
     frame_height: int = 1080,
     camera_height_cm: int = 70,
+    margin: float = 0.0,
 ) -> Calibration:
     """거리 기준 영상에서 모은 박스로 기준값을 만든다.
 
     각 거리(5.5m, 3m, 2m)에 사람이 서 있는 동안의 박스 목록을 준다.
-    각 거리의 박스 아래 끝 높이를 **중앙값**으로 대표값을 잡고, 인접한 두 거리의 한가운데를 경계로 쓴다.
-    (예: 5.5m 대표값과 3m 대표값의 중간 위쪽은 5.5m 밖, 아래쪽은 5.5m 이내)
+    각 거리의 박스 아래 끝 높이(화면 높이 비율)의 **중앙값**을 그 단계의 경계로 쓴다.
+    5.5m 이내(1단계)는 5.5m 대표값 이상, 3m 이내(2단계)는 3m 대표값 이상, 2m 이내(3단계)는 2m 대표값 이상이다.
+    그래서 "5.5m 삐 / 3m 삐삐 / 2m 삐삐삐"가 말한 거리에서 바뀐다.
+
+    margin: 서 있는 자리의 흔들림에 대한 여유(화면 높이 비율). 경계를 이만큼 **위로**(멀리로) 당겨서
+    말한 거리보다 조금 일찍 울리게 한다. 기본 0(여유 없음)이고, 거리 기준 영상으로 재 본 뒤 정한다.
+    너무 키우면 먼 사람에게도 울려 쓰는 사람이 경보를 꺼 버리니, 단계 사이 간격의 절반보다 작아야 한다.
     """
+    if margin < 0:
+        raise ValueError(f"margin 은 0 이상이다: {margin}")
     reps = []
     for name, group in (("5.5m", samples_5_5), ("3m", samples_3), ("2m", samples_2)):
         if not group:
@@ -120,13 +153,10 @@ def calibrate_from_samples(
             "거리 순서와 박스 위치가 안 맞는다(가까울수록 아래여야 함): "
             f"5.5m={r55:.3f}, 3m={r3:.3f}, 2m={r2:.3f}. 영상 구간이나 박스를 확인한다"
         )
-    # 각 거리를 '그 거리 이내' 경계로 쓴다: 5.5m 이내는 r55 이상, 3m 이내는 r3 이상, 2m 이내는 r2 이상
-    # 대표값 자체를 경계로 쓰면 서 있는 위치의 흔들림에 민감하므로 한 칸 바깥쪽 경계와의 중간을 쓴다.
-    margin_outer = (r55 - (r3 - r55) / 2) if (r3 - r55) > 0 else r55
     return Calibration(
-        foot_5_5=max(0.0, margin_outer),
-        foot_3=(r55 + r3) / 2,
-        foot_2=(r3 + r2) / 2,
+        foot_5_5=max(0.0, r55 - margin),
+        foot_3=r3 - margin,
+        foot_2=r2 - margin,
         frame_height=frame_height,
         camera_height_cm=camera_height_cm,
     )
