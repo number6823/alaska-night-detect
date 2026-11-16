@@ -39,9 +39,22 @@ python -m runner --config data/runner/config.json            # 설정 파일
 
 ## 시험
 ```bash
-python -m unittest runner.test_runner -v     # 32개 (모델·카메라·서버·스피커는 가짜로)
+python -m unittest runner.test_runner runner.test_calibrate -v     # 51개 (모델·카메라·서버·스피커는 가짜로)
 ```
 Python 3.8 과 3.11 에서 확인했습니다(Jetson 계열은 3.8).
+
+## 거리 기준값 만들기 (거리기준 영상)
+```bash
+python -m runner.calibrate --video <거리기준 영상> --out data/runner/calibration.json
+python -m runner.calibrate --video <영상> --out cal.json --times 3-13,18-28,33-43   # 구간을 직접 줄 때(5.5m,3m,2m, 초)
+python -m runner --source <영상> --calibration data/runner/calibration.json
+```
+영상에서 사람의 발 위치를 시간순으로 모아 **서 있는 구간**(발 위치가 거의 안 움직이는 구간, 걷는 구간은 자동으로 빠짐)을 찾고, 앞의 세 구간을 5.5m·3m·2m 로 보고 기준값을 만든다. 순서가 안 맞거나(가까울수록 아래여야 함) 구간을 못 찾으면 이유를 보여 주고 멈춘다. 카메라 높이·기울기를 `--height-m`, `--tilt-deg` 로 알려 주면 찾은 값이 기하학적으로 말이 되는지(표시를 맞게 놓았는지) 같이 점검한다.
+
+## 안정성
+- 감지가 오류를 내도(메모리 부족 등) 루프는 죽지 않는다. 50번 연속 실패하면 이유와 함께 `error` 로 멈춘다(`status.json` 의 `errors`, `last_error`).
+- 켜지고 첫 프레임을 읽으면 **"준비 완료"**(올라가는 세 음), 카메라가 끊기면 끊긴 순간 한 번 **"끊김"**(낮고 긴 두 음) 소리를 낸다. 경보음과 다르게 들리게 했다. `--mute` 면 내지 않는다.
+- 화면 출력과 함께 `data/runner/runner.log` 에 기록한다(1MB 씩 3개까지 돌려 씀). 콘솔이 없는 장치에서 원인을 볼 때 쓴다.
 
 ## server 와 주고받기 (실행 중에 설정 바꾸기, 명령)
 `data/runner/` 의 파일로 주고받는다. 서버가 죽어도 runner 는 계속 돈다.

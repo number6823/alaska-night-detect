@@ -70,3 +70,8 @@ server 와 runner 는 **별도 프로세스**이고 **파일로** 주고받습�
 pip install httpx
 python -m unittest server.test_app -v      # 14개
 ```
+
+## Jetson 에서 자동으로 켜기 (`deploy/`)
+- `deploy/start_all.sh`: server 와 runner 를 같이 켜고, 하나가 죽으면 그것만 다시 켠다(너무 빨리 계속 죽으면 간격을 늘린다). PC 에서 두 프로그램이 같이 도는 것은 확인했다.
+- `deploy/run_container.sh`: Jetson 에서 컨테이너를 `--restart unless-stopped` 로 만들어 `start_all.sh` 를 실행한다. 전원을 켜면 Docker 가 컨테이너를 다시 켠다. **Jetson 에서는 아직 시험하지 못했다**(이미지, GPU 옵션, 오디오·카메라 장치 이름은 장치마다 다르다).
+- 설정 화면이 저장한 `data/runner/config.json` 이 있으면 입력과 모델은 그 값으로 시작한다.
