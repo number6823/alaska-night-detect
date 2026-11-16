@@ -604,5 +604,129 @@ class LiveRunTest(unittest.TestCase):
             self.assertIn("foot_5_5", status["calibration"])
 
 
+class ResilienceTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.video = self.root / "v.mp4"
+        make_video(self.video, frames=30)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def cfg(self, **kw):
+        base = {"source": str(self.video), "data_dir": str(self.root / "data"), "post_interval_s": 0.0, "preview": False}
+        base.update(kw)
+        return RunnerConfig(**base)
+
+    def test_detector_errors_do_not_kill_the_loop(self):
+        class Flaky:
+            i = 0
+
+            def detect(self, frame):
+                Flaky.i += 1
+                if Flaky.i in (3, 4, 5):
+                    raise RuntimeError("CUDA out of memory")
+                return [box(0.9)]
+
+        beeper = Beeper(player=lambda w: True)
+        summary = run(self.cfg(), detector=Flaky(), post_fn=lambda *a, **k: {}, beeper=beeper, log=lambda s: None)
+        beeper.close()
+        self.assertEqual(summary["state"], "finished")  # 중간에 3번 실패해도 끝까지 간다
+        self.assertEqual(summary["errors"], 3)
+        self.assertGreaterEqual(summary["max_alarm_level"], 1)
+        status = json.loads((self.root / "data" / "status.json").read_text(encoding="utf-8"))
+        self.assertEqual(status["errors"], 3)
+        self.assertIn("CUDA", status["last_error"])
+
+    def test_permanent_failure_stops_with_error_state(self):
+        class Broken:
+            def detect(self, frame):
+                raise RuntimeError("모델 파일이 깨졌다")
+
+        big = self.root / "long.mp4"
+        make_video(big, frames=120)
+        beeper = Beeper(player=lambda w: True)
+        summary = run(self.cfg(source=str(big)), detector=Broken(), post_fn=lambda *a, **k: {}, beeper=beeper, log=lambda s: None)
+        beeper.close()
+        self.assertEqual(summary["state"], "error")  # 계속 실패하면 헛돌지 않고 이유와 함께 멈춘다
+        self.assertEqual(summary["errors"], 50)
+
+    def test_ready_tone_at_start_and_mute_respected(self):
+        class Quiet:
+            def detect(self, frame):
+                return []
+
+        loud = Beeper(player=lambda w: True)
+        run(self.cfg(), detector=Quiet(), post_fn=lambda *a, **k: {}, beeper=loud, log=lambda s: None)
+        loud.close()
+        self.assertEqual(loud.events, ["ready"])
+        muted = Beeper(mute=True, player=lambda w: True)
+        run(self.cfg(mute=True), detector=Quiet(), post_fn=lambda *a, **k: {}, beeper=muted, log=lambda s: None)
+        muted.close()
+        self.assertEqual(muted.events, ["ready"])  # 기록은 남기지만 재생은 안 한다
+
+    def test_camera_lost_tone_once_and_reconnect(self):
+        class Flicker:
+            """처음 5프레임은 읽히고, 끊겼다가, 다시 연결되면 또 읽힌다."""
+
+            is_file = False
+            fps = 30.0
+            opened = True
+
+            def __init__(self):
+                self.calls = 0
+                self.reopens = 0
+
+            def read(self):
+                self.calls += 1
+                if self.calls <= 5 or self.calls > 8:
+                    return np.full((H, W, 3), 50, np.uint8)
+                return None  # 6~8번째 읽기는 실패(끊김)
+
+            def reopen(self):
+                self.reopens += 1
+                return True
+
+            def release(self):
+                pass
+
+        class Quiet:
+            def detect(self, frame):
+                return []
+
+        src = Flicker()
+        beeper = Beeper(player=lambda w: True)
+        summary = run(
+            self.cfg(max_frames=10),
+            detector=Quiet(),
+            post_fn=lambda *a, **k: {},
+            beeper=beeper,
+            source=src,
+            log=lambda s: None,    lost_retry_s=0.0,
+        )
+        beeper.close()
+        self.assertEqual(summary["frames"], 10)
+        self.assertEqual(beeper.events.count("lost"), 1)  # 끊긴 순간 한 번만 알린다
+        self.assertGreaterEqual(src.reopens, 1)
+
+
+class SoundEventTest(unittest.TestCase):
+    def test_event_tones_are_valid_and_distinct_from_alarms(self):
+        from runner.sound import EVENTS, event_wav
+
+        for name in EVENTS:
+            with wave.open(io.BytesIO(event_wav(name)), "rb") as w:
+                self.assertGreater(w.getnframes() / w.getframerate(), 0.3)
+        with self.assertRaises(ValueError):
+            event_wav("nope")
+        b = Beeper(player=lambda w: True)
+        try:
+            self.assertFalse(b.play_event("nope"))
+            self.assertTrue(b.play_event("ready"))
+        finally:
+            b.close()
+
+
 if __name__ == "__main__":
     unittest.main()

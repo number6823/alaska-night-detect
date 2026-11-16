@@ -155,6 +155,7 @@ def run(
     config_path: Optional[str] = None,
     cli_keys=frozenset(),
     watch_interval_s: float = 0.5,
+    lost_retry_s: float = 1.0,
 ) -> dict:
     cfg.validate()
     src = source or VideoSource(cfg.source, realtime=cfg.realtime)
@@ -182,6 +183,11 @@ def run(
     frames = 0
     max_level = 0
     posts = 0
+    errors = 0
+    consecutive_errors = 0
+    lost_notified = False
+    last_error = ""
+    MAX_CONSECUTIVE_ERRORS = 50
     last_detect_at = ""
     started = time.monotonic()
     state = "running"
@@ -196,7 +202,11 @@ def run(
             state, cfg, frames, started, level, last_detect_at, reporter, spool, fps
         )
         data.update(live.extras())
+        data["errors"] = errors
+        data["last_error"] = last_error
         return data
+
+    beeper.play_event("ready")  # 입력이 열리고 첫 프레임을 읽었다. 이제 쓸 수 있다는 알림
 
     try:
         while True:
@@ -205,17 +215,41 @@ def run(
                 if src.is_file:
                     state = "finished"
                     break
+                if not lost_notified:
+                    # 끊긴 순간 한 번만 알린다(다시 연결했다가 또 읽지 못해도 소리를 반복하지 않는다)
+                    beeper.play_event("lost")
+                    log("카메라(입력)가 끊겼다. 다시 연결을 시도한다")
+                    lost_notified = True
                 state = "camera_lost"
                 writer.write_status(status(0), force=True)
-                time.sleep(1.0)
+                time.sleep(lost_retry_s)
                 if src.reopen():
                     log("카메라를 다시 연결했다")
-                    state = "running"
                 frame = src.read() if src.opened else None
+                if frame is not None:
+                    state = "running"  # 프레임이 실제로 읽혀야 정상으로 돌아온다
                 continue
+            lost_notified = False
 
             t0 = time.monotonic()
-            boxes = detector.detect(frame)
+            try:
+                boxes = detector.detect(frame)
+                consecutive_errors = 0
+            except Exception as exc:  # 모델 오류(메모리 부족, 장치 오류)로 루프가 죽으면 경고가 통째로 멈춘다
+                errors += 1
+                consecutive_errors += 1
+                last_error = f"{type(exc).__name__}: {exc}"[:200]
+                if consecutive_errors == 1 or consecutive_errors % 25 == 0:
+                    log(f"감지 오류({consecutive_errors}번째 연속): {last_error}")
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                    state = "error"
+                    log("감지가 계속 실패해서 멈춘다. 모델과 장치를 확인한다")
+                    break
+                frame = src.read()
+                if frame is None and src.is_file:
+                    state = "finished"
+                    break
+                continue
             ms = int((time.monotonic() - t0) * 1000)
             res = pipe.process(boxes)
             beeper.update(res.alarm_level)
@@ -280,6 +314,7 @@ def run(
         "post_failed": reporter.failed,
         "spooled_left": spool.count(),
         "beeps": len(beeper.played),
+        "errors": errors,
     }
     log(f"끝: {summary}")
     return summary

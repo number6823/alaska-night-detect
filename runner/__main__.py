@@ -19,6 +19,31 @@ from .app import run
 from .config import build_config, load_config_file
 
 
+def make_logger(data_dir: str):
+    """화면에 찍고, 파일(data_dir/runner.log, 1MB 씩 3개까지 돌려 씀)에도 남긴다. 콘솔 없는 장치에서 원인을 보려고."""
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    os.makedirs(data_dir, exist_ok=True)
+    logger = logging.getLogger("runner")
+    logger.setLevel(logging.INFO)
+    if not logger.handlers:
+        fh = RotatingFileHandler(
+            os.path.join(data_dir, "runner.log"),
+            maxBytes=1_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        fh.setFormatter(logging.Formatter("%(asctime)s %(message)s", "%m-%d %H:%M:%S"))
+        logger.addHandler(fh)
+
+    def log(message: str) -> None:
+        print(message)
+        logger.info(message)
+
+    return log
+
+
 def main() -> None:
     p = argparse.ArgumentParser(
         prog="python -m runner",
@@ -96,7 +121,9 @@ def main() -> None:
     cfg = build_config(file_values, cli)
     if not config_path:
         config_path = os.path.join(data_dir, "config.json")  # 나중에 만들어져도 읽을 수 있게
-    summary = run(cfg, config_path=config_path, cli_keys=cli_keys)
+    summary = run(
+        cfg, config_path=config_path, cli_keys=cli_keys, log=make_logger(cfg.data_dir)
+    )
     print(json.dumps(summary, ensure_ascii=False))
 
 

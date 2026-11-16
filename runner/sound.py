@@ -44,6 +44,32 @@ def tone_samples(freq: float, seconds: float, volume: float = 0.6) -> List[int]:
     return out
 
 
+# 경보가 아닌 알림 소리. 경보(높은 삐 소리)와 헷갈리지 않게 음색과 길이가 다르다.
+#  ready: 켜졌고 카메라가 열렸다(올라가는 세 음), lost: 카메라가 끊겼다(낮고 긴 두 음)
+EVENTS = {
+    "ready": [(660, 0.12), (880, 0.12), (1100, 0.20)],
+    "lost": [(300, 0.30), (300, 0.30)],
+}
+
+
+def event_wav(name: str) -> bytes:
+    if name not in EVENTS:
+        raise ValueError(f"모르는 알림: {name}")
+    samples: List[int] = []
+    gap = [0] * int(SAMPLE_RATE * 0.06)
+    for i, (freq, seconds) in enumerate(EVENTS[name]):
+        samples += tone_samples(freq, seconds, volume=0.5)
+        if i < len(EVENTS[name]) - 1:
+            samples += gap
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(SAMPLE_RATE)
+        w.writeframes(struct.pack("<%dh" % len(samples), *samples))
+    return buf.getvalue()
+
+
 def pattern_wav(level: int) -> bytes:
     """단계에 맞는 소리 묶음(삐 N번)을 WAV 바이트로 만든다."""
     if level not in PATTERNS:
@@ -103,10 +129,12 @@ class Beeper:
         self._player = player
         self._clock = clock
         self._wavs = {lvl: pattern_wav(lvl) for lvl in PATTERNS}
+        self._wavs.update({name: event_wav(name) for name in EVENTS})
         self._q: "queue.Queue[Optional[int]]" = queue.Queue(maxsize=2)
         self._busy = threading.Event()
         self._next_ok = 0.0
         self._last_level = 0
+        self.events: List[str] = []  # 낸 알림 이름(시험과 요약에 쓴다)
         self.played: List[Tuple[float, int]] = []  # (시각, 단계). 시험과 요약에 쓴다
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
@@ -140,6 +168,19 @@ class Beeper:
                 self._q.put_nowait(level)
             except queue.Full:
                 return False
+        return True
+
+    def play_event(self, name: str) -> bool:
+        """켜짐("ready")이나 카메라 끊김("lost") 알림. 경보 간격 규칙과 상관없이 낸다. mute 면 내지 않는다."""
+        if name not in EVENTS:
+            return False
+        self.events.append(name)
+        if self.mute:
+            return False
+        try:
+            self._q.put_nowait(name)
+        except queue.Full:
+            return False
         return True
 
     def play_now(self, level: int) -> None:
