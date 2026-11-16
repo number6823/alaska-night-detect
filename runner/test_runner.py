@@ -1,0 +1,487 @@
+"""runner 시험. 실행: python -m unittest runner.test_runner -v
+
+모델·카메라·서버·스피커는 가짜로 바꿔 끼워서 로직만 확인한다(ultralytics 를 불러오지 않는다).
+"""
+
+import io
+import json
+import tempfile
+import time
+import unittest
+import wave
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from alarm.levels import Calibration
+from runner.app import run
+from runner.config import RunnerConfig, build_config, load_config_file
+from runner.pipeline import LEVEL_DISTANCE_M, Pipeline
+from runner.sound import PATTERNS, Beeper, pattern_duration_s, pattern_wav
+from runner.sources import VideoSource, parse_source
+from runner.spool import Reporter, Spool
+from runner.status import StatusWriter, atomic_write, draw_overlay, encode_jpeg
+
+H, W = 240, 320
+CAL = Calibration(foot_5_5=0.55, foot_3=0.70, foot_2=0.85, frame_height=H)
+
+
+def box(foot_ratio, conf=0.9, cls=0):
+    y2 = foot_ratio * H
+    return (100, y2 - 80, 160, y2, conf, cls)
+
+
+def make_video(path, frames=30, fps=10):
+    w = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (W, H))
+    for i in range(frames):
+        img = np.full((H, W, 3), 40 + i, np.uint8)
+        w.write(img)
+    w.release()
+
+
+class ConfigTest(unittest.TestCase):
+    def test_defaults_and_validation(self):
+        cfg = build_config({}, {"source": "a.mp4"})
+        self.assertEqual(cfg.model, "yolo11n.pt")
+        for bad in (
+            {"min_conf": 1.5},
+            {"camera_height_m": 9},
+            {"tilt_deg": -1},
+            {"need": 5, "window": 3},
+        ):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                build_config({}, dict({"source": "a.mp4"}, **bad))
+        with self.assertRaises(ValueError):
+            build_config({}, {})  # source 가 없다
+
+    def test_cli_beats_file_and_none_is_ignored(self):
+        cfg = build_config(
+            {"source": "file.mp4", "min_conf": 0.5},
+            {"source": "cli.mp4", "min_conf": None},
+        )
+        self.assertEqual((cfg.source, cfg.min_conf), ("cli.mp4", 0.5))
+
+    def test_unknown_key_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "c.json"
+            p.write_text(
+                json.dumps({"source": "a", "mute_sound": True}), encoding="utf-8"
+            )
+            with self.assertRaises(ValueError):
+                load_config_file(str(p))
+            p.write_text(json.dumps({"source": "a", "mute": True}), encoding="utf-8")
+            self.assertTrue(load_config_file(str(p))["mute"])
+
+
+class PipelineTest(unittest.TestCase):
+    def pipe(self, **kw):
+        self.now = 0.0
+        return Pipeline(CAL, clock=lambda: self.now, **kw)
+
+    def test_levels_follow_foot_position_with_two_of_three_rule(self):
+        p = self.pipe()
+        self.assertEqual(p.process([box(0.40)]).alarm_level, 0)
+        self.assertEqual(p.process([box(0.90)]).alarm_level, 0)  # 한 번만 잡힘
+        self.assertEqual(p.process([box(0.90)]).alarm_level, 3)  # 두 번째에 울림
+
+    def test_counts_filter_class_and_confidence(self):
+        p = self.pipe()
+        r = p.process(
+            [box(0.9, 0.9, 0), box(0.9, 0.8, 1), box(0.9, 0.9, 2), box(0.9, 0.1, 0)]
+        )
+        self.assertEqual(
+            (r.person, r.bicycle), (1, 1)
+        )  # 자동차(2)와 낮은 신뢰도는 센다
+        self.assertAlmostEqual(r.top, 0.9)
+
+    def test_car_only_never_alarms(self):
+        p = self.pipe()
+        for _ in range(5):
+            self.assertEqual(p.process([box(0.9, 0.95, 2)]).alarm_level, 0)
+
+    def test_post_on_rising_then_throttled(self):
+        p = self.pipe(post_interval_s=2.0)
+        self.assertFalse(p.process([box(0.60)]).should_post)  # 아직 경보 아님
+        r = p.process([box(0.60)])
+        self.assertTrue(r.should_post)  # 0 -> 1 바로 올린다
+        self.assertFalse(p.process([box(0.60)]).should_post)  # 같은 단계, 간격 안
+        self.now += 2.1
+        self.assertTrue(p.process([box(0.60)]).should_post)  # 간격이 지났다
+        # 단계가 올라가면 간격과 상관없이 바로
+        p.process([box(0.90)])
+        r = p.process([box(0.90)])
+        self.assertEqual(r.alarm_level, 3)
+        self.assertTrue(r.should_post)
+
+    def test_new_event_after_quiet(self):
+        p = self.pipe(post_interval_s=100)
+        for _ in range(2):
+            p.process([box(0.9)])
+        for _ in range(3):
+            self.assertFalse(p.process([]).should_post)  # 사라짐
+        p.process([box(0.9)])
+        self.assertTrue(
+            p.process([box(0.9)]).should_post
+        )  # 새 사건이라 간격과 상관없이
+
+    def test_distance_names(self):
+        self.assertEqual(LEVEL_DISTANCE_M, {0: 0.0, 1: 5.5, 2: 3.0, 3: 2.0})
+
+
+class SoundTest(unittest.TestCase):
+    def test_wav_is_valid_and_levels_differ(self):
+        lengths = []
+        for lvl in PATTERNS:
+            with wave.open(io.BytesIO(pattern_wav(lvl)), "rb") as w:
+                self.assertEqual((w.getnchannels(), w.getsampwidth()), (1, 2))
+                lengths.append(w.getnframes() / w.getframerate())
+            self.assertAlmostEqual(lengths[-1], pattern_duration_s(lvl), delta=0.01)
+        self.assertEqual(
+            len(set(round(x, 2) for x in lengths)), 3
+        )  # 단계마다 길이(삐 개수)가 다르다
+
+    def test_beep_cadence_and_mute(self):
+        now = [0.0]
+        heard = []
+        b = Beeper(
+            player=lambda wav: heard.append(len(wav)) or True, clock=lambda: now[0]
+        )
+        try:
+            self.assertTrue(b.update(3))
+            time.sleep(0.2)
+            self.assertFalse(b.update(3))  # 간격 안이라 또 울리지 않는다
+            now[0] += 5.0
+            self.assertTrue(b.update(1))
+            time.sleep(0.2)
+            self.assertEqual(len(heard), 2)
+            self.assertFalse(b.update(0))
+        finally:
+            b.close()
+        quiet = []
+        m = Beeper(mute=True, player=lambda wav: quiet.append(1) or True)
+        try:
+            m.update(3)
+            time.sleep(0.1)
+            self.assertEqual(quiet, [])
+            self.assertEqual(len(m.played), 1)  # 기록은 남기되 재생은 안 한다
+        finally:
+            m.close()
+
+    def test_escalation_beeps_immediately_but_same_level_waits(self):
+        b = Beeper(player=lambda wav: True, clock=lambda: 0.0)  # 시계가 멈춰 있어도
+        try:
+            self.assertTrue(b.update(1))
+            self.assertFalse(b.update(1))  # 같은 단계는 간격을 기다린다
+            self.assertTrue(b.update(2))  # 단계가 올라가면 바로
+            self.assertTrue(b.update(3))
+            self.assertFalse(b.update(2))  # 내려갈 때는 기다린다
+            b.update(0)  # 경보가 꺼졌다
+            self.assertTrue(b.update(1))  # 새 사건은 바로
+        finally:
+            b.close()
+        self.assertEqual([lvl for _, lvl in b.played], [1, 2, 3, 1])
+
+    def test_player_failure_does_not_break(self):
+        def boom(_):
+            raise OSError("스피커 없음")
+
+        b = Beeper(player=boom, clock=lambda: 0.0)
+        try:
+            b.update(2)
+            time.sleep(0.2)
+        finally:
+            b.close()
+
+
+class SourceTest(unittest.TestCase):
+    def test_parse(self):
+        self.assertEqual(parse_source("0"), ("camera", 0))
+        self.assertEqual(parse_source("rtsp://1.2.3.4/x")[0], "stream")
+        self.assertEqual(parse_source("http://phone:8080/video")[0], "stream")
+        self.assertEqual(parse_source("C:/a/b.mp4")[0], "file")
+
+    def test_file_with_korean_path_and_end(self):
+        with tempfile.TemporaryDirectory() as d:
+            folder = Path(d) / "자유촬영_밝기미확인"
+            folder.mkdir()
+            vid = folder / "20261116_R5_01_보행접근.mp4"
+            make_video(vid, frames=12)
+            src = VideoSource(str(vid))
+            n = 0
+            while src.read() is not None:
+                n += 1
+            self.assertEqual(n, 12)
+            self.assertTrue(src.is_file)
+            self.assertFalse(src.reopen())
+            src.release()
+
+    def test_missing_file(self):
+        with self.assertRaises(FileNotFoundError):
+            VideoSource("없는파일.mp4")
+
+
+class SpoolTest(unittest.TestCase):
+    def test_order_flush_and_failure_stops(self):
+        with tempfile.TemporaryDirectory() as d:
+            sp = Spool(d)
+            for i in range(3):
+                sp.put(b"\xff\xd8\xff" + bytes([i]), {"person": i})
+            self.assertEqual(sp.count(), 3)
+            got = []
+
+            def ok(jpeg, meta):
+                got.append(meta["person"])
+
+            self.assertEqual(sp.flush(ok), 3)
+            self.assertEqual(got, [0, 1, 2])  # 오래된 것부터
+            self.assertEqual(sp.count(), 0)
+            self.assertEqual(list(Path(d).glob("*.jpg")), [])  # 사진도 같이 지운다
+
+            for i in range(3):
+                sp.put(None, {"person": i})
+            calls = []
+
+            def fail_on_second(jpeg, meta):
+                calls.append(meta["person"])
+                if meta["person"] == 1:
+                    raise ConnectionError("서버 꺼짐")
+
+            self.assertEqual(sp.flush(fail_on_second), 1)
+            self.assertEqual(sp.count(), 2)  # 실패한 것부터 남는다
+
+    def test_cap_drops_oldest(self):
+        with tempfile.TemporaryDirectory() as d:
+            sp = Spool(d, max_items=3)
+            for i in range(5):
+                sp.put(None, {"n": i})
+            kept = [json.loads(p.read_text())["n"] for p in sp.pending()]
+            self.assertEqual(kept, [2, 3, 4])
+
+
+class ReporterTest(unittest.TestCase):
+    def wait(self, cond, seconds=3.0):
+        end = time.time() + seconds
+        while time.time() < end:
+            if cond():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def test_server_down_then_back(self):
+        with tempfile.TemporaryDirectory() as d:
+            up = [False]
+            received = []
+
+            def post(url, jpeg, timeout=0, **meta):
+                if not up[0]:
+                    raise ConnectionError("서버 꺼짐")
+                received.append(meta["person"])
+                return {}
+
+            rep = Reporter("http://x", Spool(d), post_fn=post, retry_s=0.05)
+            try:
+                rep.submit(b"\xff\xd8\xff", {"person": 1})
+                rep.submit(b"\xff\xd8\xff", {"person": 2})
+                self.assertTrue(
+                    self.wait(lambda: rep.spool.count() == 2)
+                )  # 서버가 죽어 있어 쌓인다
+                up[0] = True  # 서버가 살아났다 — 새 기록 없이도 다시 올라가야 한다
+                self.assertTrue(self.wait(lambda: sorted(received) == [1, 2]))
+                self.assertTrue(self.wait(lambda: rep.spool.count() == 0))
+            finally:
+                rep.close()
+
+    def test_submit_does_not_block_on_slow_server(self):
+        with tempfile.TemporaryDirectory() as d:
+
+            def slow(url, jpeg, timeout=0, **meta):
+                time.sleep(0.5)
+                return {}
+
+            rep = Reporter("http://x", Spool(d), post_fn=slow, retry_s=0.05)
+            try:
+                t0 = time.time()
+                for i in range(5):
+                    rep.submit(None, {"person": i})
+                self.assertLess(
+                    time.time() - t0, 0.2
+                )  # 영상 처리를 기다리게 하지 않는다
+            finally:
+                rep.close(wait_s=0.1)
+
+
+class StatusTest(unittest.TestCase):
+    def test_atomic_write_and_throttle(self):
+        with tempfile.TemporaryDirectory() as d:
+            now = [0.0]
+            w = StatusWriter(d, status_interval_s=1.0, clock=lambda: now[0])
+            self.assertTrue(w.write_status({"state": "running"}))
+            self.assertFalse(
+                w.write_status({"state": "running"})
+            )  # 1초 안이라 쓰지 않는다
+            now[0] = 1.5
+            self.assertTrue(w.write_status({"state": "running", "frames": 9}))
+            data = json.loads((Path(d) / "status.json").read_text(encoding="utf-8"))
+            self.assertEqual(data["frames"], 9)
+            self.assertIn("updated", data)
+            self.assertEqual(list(Path(d).glob("*.tmp")), [])
+            atomic_write(Path(d) / "x.bin", b"abc")
+            self.assertEqual((Path(d) / "x.bin").read_bytes(), b"abc")
+
+    def test_overlay_keeps_original_and_encodes(self):
+        frame = np.zeros((H, W, 3), np.uint8)
+        out = draw_overlay(frame, [box(0.9), box(0.9, 0.05)], CAL, 3)
+        self.assertEqual(out.shape, frame.shape)
+        self.assertEqual(int(frame.sum()), 0)  # 원본은 그대로
+        self.assertGreater(int(out.sum()), 0)
+        self.assertTrue(encode_jpeg(out).startswith(b"\xff\xd8\xff"))
+
+
+class EndToEndTest(unittest.TestCase):
+    """가짜 감지기·서버·스피커로 영상 한 편을 끝까지 돌린다."""
+
+    class Fake:
+        """프레임 번호별로 정해 둔 박스를 돌려준다."""
+
+        def __init__(self, plan):
+            self.plan, self.i = plan, 0
+
+        def detect(self, frame):
+            out = self.plan(self.i)
+            self.i += 1
+            return out
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.video = self.root / "영상" / "시연_보행접근.mp4"
+        self.video.parent.mkdir()
+        make_video(self.video, frames=30)
+        self.posts = []
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def post(self, url, jpeg, timeout=0, **meta):
+        self.posts.append((jpeg, meta))
+        return {}
+
+    def cfg(self, **kw):
+        base = dict(
+            source=str(self.video),
+            data_dir=str(self.root / "data"),
+            post_interval_s=0.0,
+        )
+        base.update(kw)
+        return RunnerConfig(**base)
+
+    def test_approach_raises_levels_and_posts(self):
+        # 멀다 -> 5.5m -> 3m -> 2m 로 다가오는 사람.
+        # 기준값 파일이 없으면 높이 0.7m·기울기 15도·화각 60도로 계산한 추정치(발 높이 0.38 / 0.47 / 0.56)를 쓴다
+        def plan(i):
+            if i < 5:
+                return []
+            ratio = 0.30 if i < 10 else 0.42 if i < 15 else 0.50 if i < 20 else 0.60
+            return [box(ratio)]
+
+        heard = []
+        beeper = Beeper(player=lambda w: heard.append(len(w)) or True)
+        summary = run(
+            self.cfg(),
+            detector=self.Fake(plan),
+            post_fn=self.post,
+            beeper=beeper,
+            log=lambda s: None,
+        )
+        beeper.close()
+        self.assertEqual(summary["state"], "finished")
+        self.assertEqual(summary["frames"], 30)
+        self.assertEqual(summary["max_alarm_level"], 3)
+        self.assertGreaterEqual(summary["posts_submitted"], 3)
+        self.assertEqual(summary["posted_ok"], len(self.posts))
+        levels = [m["level"] for _, m in self.posts]
+        self.assertEqual(levels, sorted(levels))  # 다가올수록 단계가 올라간다
+        self.assertEqual(levels[-1], 3)
+        self.assertEqual(self.posts[-1][1]["dist"], 2.0)
+        self.assertTrue(
+            all(j and j.startswith(b"\xff\xd8\xff") for j, _ in self.posts)
+        )  # 박스 그린 캡처가 같이 간다
+        self.assertGreaterEqual(summary["beeps"], 3)
+        data = Path(self.root / "data")
+        self.assertEqual(
+            json.loads((data / "status.json").read_text(encoding="utf-8"))["state"],
+            "finished",
+        )
+        self.assertTrue((data / "preview.jpg").read_bytes().startswith(b"\xff\xd8\xff"))
+
+    def test_nobody_means_silence_and_no_posts(self):
+        beeper = Beeper(player=lambda w: True)
+        summary = run(
+            self.cfg(),
+            detector=self.Fake(lambda i: []),
+            post_fn=self.post,
+            beeper=beeper,
+            log=lambda s: None,
+        )
+        beeper.close()
+        self.assertEqual(
+            (summary["max_alarm_level"], summary["posts_submitted"], summary["beeps"]),
+            (0, 0, 0),
+        )
+        self.assertEqual(self.posts, [])
+
+    def test_server_down_keeps_alarm_and_spools(self):
+        def dead(url, jpeg, timeout=0, **meta):
+            raise ConnectionError("서버 꺼짐")
+
+        beeper = Beeper(player=lambda w: True)
+        summary = run(
+            self.cfg(max_frames=0),
+            detector=self.Fake(lambda i: [box(0.9)]),
+            post_fn=dead,
+            beeper=beeper,
+            log=lambda s: None,
+        )
+        beeper.close()
+        self.assertEqual(summary["state"], "finished")  # 서버가 죽어도 끝까지 돈다
+        self.assertEqual(summary["max_alarm_level"], 3)
+        self.assertGreaterEqual(summary["beeps"], 1)  # 경고음은 그대로 난다
+        self.assertEqual(summary["posted_ok"], 0)
+        self.assertGreaterEqual(summary["spooled_left"], 1)  # 기록은 디스크에 남는다
+
+    def test_max_frames_and_calibration_file(self):
+        from alarm.levels import save_calibration
+
+        calfile = self.root / "cal.json"
+        save_calibration(
+            Calibration(0.30, 0.40, 0.50, frame_height=1080), calfile
+        )  # 다른 화면 높이로 저장된 기준값
+        summary = run(
+            self.cfg(max_frames=7, calibration=str(calfile)),
+            detector=self.Fake(
+                lambda i: [box(0.55)]
+            ),  # 이 기준값에서는 3단계(0.50 이상)
+            post_fn=self.post,
+            beeper=Beeper(mute=True),
+            log=lambda s: None,
+        )
+        self.assertEqual(summary["frames"], 7)
+        self.assertEqual(
+            summary["max_alarm_level"], 3
+        )  # 기준값의 높이 비율을 실제 영상 높이에 맞춰 쓴다
+
+    def test_empty_source_fails_clearly(self):
+        bad = self.root / "빈.mp4"
+        bad.write_bytes(b"not a video")
+        with self.assertRaises(RuntimeError):
+            run(
+                self.cfg(source=str(bad)),
+                detector=self.Fake(lambda i: []),
+                post_fn=self.post,
+                log=lambda s: None,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()
