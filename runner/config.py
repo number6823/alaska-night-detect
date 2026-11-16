@@ -19,6 +19,8 @@ class RunnerConfig:
     # 입력: 영상 파일 경로 / 카메라 번호(0, 1, ...) / rtsp:// 나 http:// 주소
     source: str = ""
     model: str = "yolo11n.pt"
+    # 빈 값이면 GPU(CUDA)가 되는 환경에서는 GPU, 아니면 CPU. "0" 은 첫 GPU, "cpu" 는 CPU 강제
+    device: str = ""
     min_conf: float = 0.25
     # 거리 기준값: calibration 파일이 있으면 그것을, 없으면 높이·기울기·화각으로 계산한 추정치를 쓴다
     calibration: Optional[str] = None

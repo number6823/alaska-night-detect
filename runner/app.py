@@ -51,7 +51,7 @@ def run(
     if detector is None:
         from .detector import Detector
 
-        detector = Detector(cfg.model, cfg.min_conf)
+        detector = Detector(cfg.model, cfg.min_conf, cfg.device)
     pipe = Pipeline(cal, cfg.min_conf, cfg.window, cfg.need, cfg.post_interval_s)
     own_beeper = beeper is None
     beeper = beeper or Beeper(mute=cfg.mute)
@@ -66,8 +66,9 @@ def run(
     started = time.monotonic()
     state = "running"
     frame = first
+    where = detector.describe() if hasattr(detector, "describe") else "?"
     log(
-        f"시작: 입력={cfg.source}, 모델={cfg.model}, 화면 높이={first.shape[0]}, 서버={cfg.server_url}"
+        f"시작: 입력={cfg.source}, 모델={cfg.model}, 장치={where}, 화면 높이={first.shape[0]}, 서버={cfg.server_url}"
     )
     try:
         while True:
