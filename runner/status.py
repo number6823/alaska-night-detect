@@ -41,6 +41,7 @@ def draw_overlay(
     cal: Calibration,
     alarm_level: int,
     min_conf: float = 0.25,
+    min_conf_bicycle: Optional[float] = None,
 ):
     """박스, 5.5m·3m·2m 거리선, 경보 단계를 그린 사본을 돌려준다(원본 프레임은 그대로)."""
     out = frame.copy()
@@ -61,7 +62,8 @@ def draw_overlay(
             cv2.LINE_AA,
         )
     for b in boxes:
-        if len(b) < 6 or b[4] < min_conf:
+        need = min_conf_bicycle if (round(b[5]) == 1 and min_conf_bicycle is not None) else min_conf
+        if len(b) < 6 or b[4] < need:
             continue
         x1, y1, x2, y2, conf, cls = b[:6]
         color = CLASS_COLORS.get(round(cls), (200, 200, 200))

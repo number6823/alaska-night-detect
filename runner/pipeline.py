@@ -42,12 +42,23 @@ class Pipeline:
     ) -> None:
         self.cal = cal
         self.min_conf = min_conf
+        self.min_conf_bicycle: Optional[float] = None  # 비우면 min_conf 와 같다
         self.classes = tuple(classes)
         self.post_interval_s = post_interval_s
         self._state = AlarmState(window=window, need=need)
         self._clock = clock
         self._last_post_level = 0
         self._last_post_time: Optional[float] = None
+
+    def conf_for(self, cls: int) -> float:
+        """클래스별 신뢰도 기준. 자전거만 따로 정했으면 그 값, 아니면 min_conf."""
+        if cls == 1 and self.min_conf_bicycle is not None:
+            return self.min_conf_bicycle
+        return self.min_conf
+
+    def floor_conf(self) -> float:
+        """감지기가 박스를 내보내야 하는 가장 낮은 기준(두 클래스 기준 중 낮은 쪽)."""
+        return min(self.min_conf, self.min_conf_bicycle if self.min_conf_bicycle is not None else self.min_conf)
 
     def reconfigure(
         self,
@@ -56,12 +67,18 @@ class Pipeline:
         window: Optional[int] = None,
         need: Optional[int] = None,
         post_interval_s: Optional[float] = None,
+        min_conf_bicycle: Optional[float] = None,
+        clear_min_conf_bicycle: bool = False,
     ) -> None:
         """실행 중에 설정을 바꾼다. 연속 프레임 규칙을 바꾸면 쌓아 둔 프레임 기록은 버리고 새로 센다."""
         if cal is not None:
             self.cal = cal
         if min_conf is not None:
             self.min_conf = min_conf
+        if min_conf_bicycle is not None:
+            self.min_conf_bicycle = min_conf_bicycle
+        if clear_min_conf_bicycle:
+            self.min_conf_bicycle = None
         if post_interval_s is not None:
             self.post_interval_s = post_interval_s
         if window is not None or need is not None:
@@ -74,9 +91,9 @@ class Pipeline:
         keep = [
             b
             for b in boxes
-            if len(b) > 5 and round(b[5]) in self.classes and b[4] >= self.min_conf
+            if len(b) > 5 and round(b[5]) in self.classes and b[4] >= self.conf_for(round(b[5]))
         ]
-        lvl = frame_level(keep, self.cal, self.min_conf, self.classes)
+        lvl = frame_level(keep, self.cal, 0.0, self.classes)  # 신뢰도는 위에서 클래스별로 이미 걸렀다
         alarm = self._state.update(lvl)
         person = sum(1 for b in keep if round(b[5]) == 0)
         bicycle = sum(1 for b in keep if round(b[5]) == 1)

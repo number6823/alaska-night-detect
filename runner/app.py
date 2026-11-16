@@ -92,6 +92,11 @@ class Live:
         self.pipe.reconfigure(
             cal=cal,
             min_conf=self.cfg.min_conf if "min_conf" in applied else None,
+            min_conf_bicycle=self.cfg.min_conf_bicycle
+            if "min_conf_bicycle" in applied and self.cfg.min_conf_bicycle is not None
+            else None,
+            clear_min_conf_bicycle="min_conf_bicycle" in applied
+            and self.cfg.min_conf_bicycle is None,
             window=self.cfg.window if "window" in applied else None,
             need=self.cfg.need if "need" in applied else None,
             post_interval_s=self.cfg.post_interval_s
@@ -102,8 +107,10 @@ class Live:
             self.cal = cal
         if "mute" in applied:
             self.beeper.mute = self.cfg.mute
-        if "min_conf" in applied and hasattr(self.detector, "min_conf"):
-            self.detector.min_conf = self.cfg.min_conf
+        if {"min_conf", "min_conf_bicycle"} & set(applied) and hasattr(
+            self.detector, "min_conf"
+        ):
+            self.detector.min_conf = self.pipe.floor_conf()  # 감지기는 낮은 쪽 기준으로 내보낸다
         self.log(f"설정을 실행 중에 반영했다: {applied}")
 
     def _run_command(self, cmd: dict) -> None:
@@ -142,6 +149,8 @@ class Live:
             "last_control": self.last_control,
             "mute": self.cfg.mute,
             "min_conf": self.cfg.min_conf,
+            "min_conf_bicycle": self.cfg.min_conf_bicycle,
+            "imgsz": self.cfg.imgsz,
         }
 
 
@@ -168,8 +177,13 @@ def run(
     if detector is None:
         from .detector import Detector
 
-        detector = Detector(cfg.model, cfg.min_conf, cfg.device)
+        floor = min(
+            cfg.min_conf,
+            cfg.min_conf_bicycle if cfg.min_conf_bicycle is not None else cfg.min_conf,
+        )
+        detector = Detector(cfg.model, floor, cfg.device, cfg.imgsz)
     pipe = Pipeline(cal, cfg.min_conf, cfg.window, cfg.need, cfg.post_interval_s)
+    pipe.min_conf_bicycle = cfg.min_conf_bicycle
     own_beeper = beeper is None
     beeper = beeper or Beeper(mute=cfg.mute)
     spool = Spool(os.path.join(cfg.data_dir, "spool"))
@@ -203,6 +217,7 @@ def run(
         )
         data.update(live.extras())
         data["errors"] = errors
+        data["dropped_frames"] = getattr(src, "dropped", 0)  # 처리가 느려서 건너뛴 프레임 수
         data["last_error"] = last_error
         return data
 
@@ -259,7 +274,12 @@ def run(
             shown = None
             if res.should_post:
                 shown = draw_overlay(
-                    frame, boxes, pipe.cal, res.alarm_level, cfg.min_conf
+                    frame,
+                    boxes,
+                    pipe.cal,
+                    res.alarm_level,
+                    cfg.min_conf,
+                    cfg.min_conf_bicycle,
                 )
                 last_detect_at = time.strftime("%H:%M:%S")
                 meta = {
@@ -278,7 +298,12 @@ def run(
                     shown
                     if shown is not None
                     else draw_overlay(
-                        frame, boxes, pipe.cal, res.alarm_level, cfg.min_conf
+                        frame,
+                    boxes,
+                    pipe.cal,
+                    res.alarm_level,
+                    cfg.min_conf,
+                    cfg.min_conf_bicycle,
                     )
                 )
                 writer.write_preview(encode_jpeg(shown, 75))
@@ -315,6 +340,7 @@ def run(
         "spooled_left": spool.count(),
         "beeps": len(beeper.played),
         "errors": errors,
+        "dropped_frames": getattr(src, "dropped", 0),
     }
     log(f"끝: {summary}")
     return summary

@@ -54,6 +54,13 @@ def main() -> None:
         "--source", help="영상 파일, 카메라 번호(0, 1...), 또는 rtsp:// http:// 주소"
     )
     p.add_argument("--model", help="YOLO 가중치(.pt) 또는 TensorRT 엔진(.engine)")
+    p.add_argument("--imgsz", type=int, help="감지 입력 크기(640, 480...). TensorRT 엔진은 만든 크기 그대로")
+    p.add_argument(
+        "--min-conf-bicycle",
+        type=float,
+        dest="min_conf_bicycle",
+        help="자전거만 따로 쓰는 신뢰도 기준(비우면 --min-conf 와 같다)",
+    )
     p.add_argument("--device", help='감지 장치. 빈 값=GPU 가 되면 GPU 아니면 CPU, "0"=첫 GPU, "cpu"=CPU 강제')
     p.add_argument(
         "--min-conf", type=float, dest="min_conf", help="이 신뢰도 미만 박스는 무시"

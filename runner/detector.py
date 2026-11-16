@@ -19,6 +19,7 @@ class Detector:
         model: str = "yolo11n.pt",
         min_conf: float = 0.25,
         device: Optional[str] = None,
+        imgsz: Optional[int] = None,
     ) -> None:
         # 무거운 import 는 쓸 때만 한다(순수 로직 시험이 느려지지 않게). 상수는 labeler 와 같은 값을 쓴다.
         import torch
@@ -35,7 +36,7 @@ class Detector:
             )
         self._kw = {
             "classes": CLASS_IDS,
-            "imgsz": IMGSZ,
+            "imgsz": imgsz or IMGSZ,  # TensorRT 엔진은 만든 크기(480 등)와 같아야 한다
             "iou": NMS_IOU,
             "verbose": False,
         }

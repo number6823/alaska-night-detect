@@ -728,5 +728,172 @@ class SoundEventTest(unittest.TestCase):
             b.close()
 
 
+class FakeCap:
+    """프레임 번호를 화소값에 넣어 돌려주는 가짜 카메라."""
+
+    def __init__(self, n, fps=30.0, delay=0.0):
+        self.n, self.fps, self.delay = n, fps, delay
+        self.i = 0
+        self.closed = False
+
+    def isOpened(self):
+        return not self.closed
+
+    def read(self):
+        if self.i >= self.n:
+            return False, None
+        self.i += 1
+        if self.delay:
+            time.sleep(self.delay)
+        return True, np.full((2, 2, 3), self.i % 256, np.uint8)
+
+    def grab(self):
+        if self.i >= self.n:
+            return False
+        self.i += 1
+        return True
+
+    def get(self, prop):
+        return self.fps
+
+    def release(self):
+        self.closed = True
+
+
+class FakeClock:
+    def __init__(self):
+        self.t = 100.0
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, seconds):
+        self.t += seconds
+
+
+class LatestFrameTest(unittest.TestCase):
+    def test_file_realtime_skips_frames_when_processing_is_slow(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.mp4"
+            path.write_bytes(b"x")
+            clock = FakeClock()
+            cap = FakeCap(400, fps=30.0)
+            src = VideoSource(str(path), realtime=True, capture_factory=lambda p: cap, clock=clock, sleep=clock.sleep)
+            delivered = 0
+            for _ in range(30):
+                self.assertIsNotNone(src.read())
+                delivered += 1
+                clock.t += 0.1  # 한 프레임 처리에 0.1초(영상은 프레임당 0.033초)
+            # 3초 동안 처리했으니 영상도 약 3초(90프레임) 지점에 와 있어야 한다. 하나씩 처리했다면 30프레임에 머문다
+            self.assertGreater(cap.i, 80)
+            self.assertGreater(src.dropped, 50)
+            self.assertEqual(src.frames_read, 30)
+            self.assertEqual(src.frames_read + src.dropped, cap.i)
+
+    def test_file_realtime_does_not_drop_when_fast_enough(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.mp4"
+            path.write_bytes(b"x")
+            clock = FakeClock()
+            cap = FakeCap(40, fps=20.0)
+            src = VideoSource(str(path), realtime=True, capture_factory=lambda p: cap, clock=clock, sleep=clock.sleep)
+            t_start = clock.t
+            while src.read() is not None:
+                clock.t += 0.01  # 아주 빠른 처리
+            self.assertEqual(src.dropped, 0)
+            self.assertAlmostEqual(clock.t - t_start, 40 / 20.0, delta=0.5)  # 영상 속도(20fps)에 맞춰 재생했다
+
+    def test_file_without_realtime_processes_every_frame(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.mp4"
+            path.write_bytes(b"x")
+            cap = FakeCap(25)
+            src = VideoSource(str(path), realtime=False, capture_factory=lambda p: cap)
+            n = 0
+            while src.read() is not None:
+                n += 1
+                time.sleep(0.001)
+            self.assertEqual((n, src.dropped), (25, 0))  # 시험·평가용은 하나도 버리지 않는다
+
+    def test_live_source_returns_latest_frame_and_counts_drops(self):
+        cap = FakeCap(300, fps=30.0, delay=0.002)
+        src = VideoSource("0", capture_factory=lambda v: cap)
+        try:
+            first = src.read()
+            self.assertIsNotNone(first)
+            # 느린 처리: 그 사이 카메라가 새 프레임을 40장 더 만들 때까지 기다린다(시간이 아니라 장수로 기다려 환경에 안 흔들리게)
+            target = int(first[0, 0, 0]) + 40
+            end = time.time() + 10
+            while cap.i < target and time.time() < end:
+                time.sleep(0.005)
+            second = src.read()
+            # 읽기 스레드가 마지막 한두 장을 저장하기 직전일 수 있어서 여유를 둔다
+            self.assertGreater(int(second[0, 0, 0]), int(first[0, 0, 0]) + 30)  # 밀린 것을 하나씩 주지 않고 최신을 준다
+            # 끝까지 읽으면(카메라가 끊김) 받은 것과 버린 것의 합이 카메라가 만든 전부다
+            while src.read() is not None:
+                pass
+            self.assertEqual(src.frames_read + src.dropped, 300)
+            self.assertGreater(src.dropped, 20)
+        finally:
+            src.release()
+
+    def test_live_source_reports_loss_and_recovers_on_reopen(self):
+        caps = [FakeCap(5, delay=0.001), FakeCap(50, delay=0.001)]
+        made = []
+
+        def factory(v):
+            made.append(1)
+            return caps[len(made) - 1]
+
+        src = VideoSource("rtsp://x/y", capture_factory=factory)
+        try:
+            got = 0
+            while src.read() is not None:  # 첫 카메라는 5프레임 만들고 끊긴다
+                got += 1
+            self.assertGreaterEqual(got, 1)
+            self.assertTrue(src.reopen())
+            self.assertIsNotNone(src.read())  # 다시 연결한 카메라에서 프레임이 온다
+        finally:
+            src.release()
+        self.assertEqual(len(made), 2)
+
+
+class PerClassConfTest(unittest.TestCase):
+    def test_bicycle_has_its_own_threshold(self):
+        p = Pipeline(CAL, min_conf=0.25, clock=lambda: 0.0)
+        p.min_conf_bicycle = 0.35
+        r = p.process([box(0.9, 0.30, 1), box(0.9, 0.26, 0)])
+        self.assertEqual((r.person, r.bicycle), (1, 0))  # 자전거 0.30 은 기준 0.35 미만이라 버려진다
+        self.assertAlmostEqual(p.floor_conf(), 0.25)
+        r = p.process([box(0.9, 0.40, 1)])
+        self.assertEqual(r.bicycle, 1)
+
+    def test_bicycle_threshold_lower_than_person_and_reconfigure(self):
+        p = Pipeline(CAL, min_conf=0.5, clock=lambda: 0.0)
+        p.reconfigure(min_conf_bicycle=0.2)
+        self.assertAlmostEqual(p.floor_conf(), 0.2)  # 감지기는 낮은 쪽 기준으로 내보내야 한다
+        self.assertEqual(p.process([box(0.9, 0.3, 1)]).bicycle, 1)
+        self.assertEqual(p.process([box(0.9, 0.3, 0)]).person, 0)  # 사람은 0.5 기준
+        p.reconfigure(clear_min_conf_bicycle=True)
+        self.assertEqual(p.process([box(0.9, 0.3, 1)]).bicycle, 0)  # 자전거도 다시 0.5 기준
+
+    def test_config_accepts_and_validates_new_keys(self):
+        cfg = build_config({}, {"source": "a", "min_conf_bicycle": 0.35, "imgsz": 480})
+        self.assertEqual((cfg.min_conf_bicycle, cfg.imgsz), (0.35, 480))
+        self.assertIsNone(build_config({}, {"source": "a"}).min_conf_bicycle)
+        for bad in ({"imgsz": 500}, {"imgsz": 64}, {"min_conf_bicycle": 1.5}, {"min_conf_bicycle": "x"}):
+            with self.assertRaises(ValueError, msg=str(bad)):
+                build_config({}, dict({"source": "a"}, **bad))
+
+    def test_live_apply_bicycle_conf_and_imgsz_needs_restart(self):
+        from runner.control import apply_config_changes
+
+        cfg = RunnerConfig(source="a.mp4")
+        res = apply_config_changes(cfg, {"min_conf_bicycle": 0.35, "imgsz": 480})
+        self.assertEqual(res["applied"], ["min_conf_bicycle"])
+        self.assertEqual(res["restart_required"], ["imgsz"])
+        self.assertEqual((cfg.min_conf_bicycle, cfg.imgsz), (0.35, 640))
+
+
 if __name__ == "__main__":
     unittest.main()

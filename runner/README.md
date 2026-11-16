@@ -39,9 +39,19 @@ python -m runner --config data/runner/config.json            # 설정 파일
 
 ## 시험
 ```bash
-python -m unittest runner.test_runner runner.test_calibrate -v     # 51개 (모델·카메라·서버·스피커는 가짜로)
+python -m unittest runner.test_runner runner.test_calibrate -v     # 60개 (모델·카메라·서버·스피커는 가짜로)
 ```
 Python 3.8 과 3.11 에서 확인했습니다(Jetson 계열은 3.8).
+
+## 느린 장치(Jetson)에서 지연이 쌓이지 않게 — 항상 최신 프레임
+감지가 카메라(30fps)보다 느리면(Jetson Nano 는 6~17fps) 밀린 프레임을 하나씩 처리하다가 경고가 점점 늦어진다. 그래서
+- 카메라·네트워크 스트림은 별도 스레드가 계속 읽어 두고 **가장 최근 프레임만** 처리한다.
+- `--realtime` 영상 파일은 처리가 늦어진 만큼 프레임을 건너뛰어 영상 시간에 맞춘다(21초 영상을 CPU 15fps 로 돌려도 약 20초에 끝난다).
+- 건너뛴 프레임 수는 `status.json`·요약의 `dropped_frames` 에 나온다. `--realtime` 이 아니면 모든 프레임을 처리한다(평가용).
+
+## 신뢰도와 입력 크기
+- `--min-conf`(기본 0.25): 사람과 자전거 공통 기준. `--min-conf-bicycle` 을 주면 **자전거만** 따로 높은 기준을 쓴다(실행 중에도 바꿀 수 있다). Jetson 시험에서 자전거 오검출이 낮은 신뢰도에 몰렸지만, 표본이 작아서(15장) 기본은 같은 기준으로 둔다.
+- `--imgsz`(기본 640): TensorRT 엔진은 **만든 크기와 같게** 준다(480 엔진이면 `--imgsz 480`). Jetson Nano 5W 에서 n 엔진은 640 이 약 12fps, 480 이 약 17fps 였다.
 
 ## 거리 기준값 만들기 (거리기준 영상)
 ```bash

@@ -22,6 +22,10 @@ class RunnerConfig:
     # 빈 값이면 GPU(CUDA)가 되는 환경에서는 GPU, 아니면 CPU. "0" 은 첫 GPU, "cpu" 는 CPU 강제
     device: str = ""
     min_conf: float = 0.25
+    # 자전거만 따로 높은 신뢰도 기준을 쓸 때(비우면 min_conf). Jetson 시험에서 자전거 오검출이 낮은 신뢰도에 몰렸다
+    min_conf_bicycle: Optional[float] = None
+    # 감지 입력 크기. TensorRT 엔진은 만든 크기 그대로 써야 한다(480 엔진이면 480). 작을수록 빠르다
+    imgsz: int = 640
     # 거리 기준값: calibration 파일이 있으면 그것을, 없으면 높이·기울기·화각으로 계산한 추정치를 쓴다
     calibration: Optional[str] = None
     camera_height_m: float = 0.7
@@ -47,6 +51,10 @@ class RunnerConfig:
             )
         if not 0.0 <= self.min_conf <= 1.0:
             raise ValueError(f"min_conf 는 0~1 이다: {self.min_conf}")
+        if self.min_conf_bicycle is not None and not 0.0 <= self.min_conf_bicycle <= 1.0:
+            raise ValueError(f"min_conf_bicycle 는 0~1 이다: {self.min_conf_bicycle}")
+        if not (160 <= self.imgsz <= 1280 and self.imgsz % 32 == 0):
+            raise ValueError(f"imgsz 는 160~1280 사이의 32의 배수다(예: 480, 640): {self.imgsz}")
         if not 0.2 <= self.camera_height_m <= 3.0:
             raise ValueError(
                 f"camera_height_m 는 0.2~3.0 (미터) 이다: {self.camera_height_m}"
@@ -72,6 +80,7 @@ class RunnerConfig:
 LIVE_KEYS = frozenset(
     {
         "min_conf",
+        "min_conf_bicycle",
         "calibration",
         "camera_height_m",
         "tilt_deg",
@@ -82,7 +91,7 @@ LIVE_KEYS = frozenset(
         "mute",
     }
 )
-RESTART_KEYS = frozenset({"source", "model", "device", "server_url", "data_dir", "realtime", "preview", "max_frames"})
+RESTART_KEYS = frozenset({"source", "model", "device", "imgsz", "server_url", "data_dir", "realtime", "preview", "max_frames"})
 
 
 def check_types(values: dict) -> dict:
@@ -93,10 +102,13 @@ def check_types(values: dict) -> dict:
         if key not in types:
             raise ValueError(f"모르는 설정: {key}")
         want = str(types[key]).replace("typing.", "")
+        optional = want.startswith("Optional[")
+        if optional:
+            want = want[len("Optional["):-1]  # Optional[float] 는 값이 있으면 float 로 검사한다
         if key == "source" and isinstance(value, int) and not isinstance(value, bool):
             value = str(value)  # 카메라 번호를 숫자로 적어도 된다
         if value is None:
-            if want.startswith("Optional"):
+            if optional:
                 out[key] = None
                 continue
             raise ValueError(f"{key} 는 비울 수 없다")
