@@ -49,6 +49,27 @@ class Pipeline:
         self._last_post_level = 0
         self._last_post_time: Optional[float] = None
 
+    def reconfigure(
+        self,
+        cal: Optional[Calibration] = None,
+        min_conf: Optional[float] = None,
+        window: Optional[int] = None,
+        need: Optional[int] = None,
+        post_interval_s: Optional[float] = None,
+    ) -> None:
+        """실행 중에 설정을 바꾼다. 연속 프레임 규칙을 바꾸면 쌓아 둔 프레임 기록은 버리고 새로 센다."""
+        if cal is not None:
+            self.cal = cal
+        if min_conf is not None:
+            self.min_conf = min_conf
+        if post_interval_s is not None:
+            self.post_interval_s = post_interval_s
+        if window is not None or need is not None:
+            self._state = AlarmState(
+                window=window if window is not None else self._state.window,
+                need=need if need is not None else self._state.need,
+            )
+
     def process(self, boxes: Sequence[Sequence[float]]) -> FrameResult:
         keep = [
             b

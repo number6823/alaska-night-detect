@@ -2,6 +2,12 @@
 
 모델·소리·서버는 밖에서 바꿔 끼울 수 있게 인자로 받는다(시험할 때 가짜를 넣는다).
 서버가 죽어도, 소리가 안 나도, 카메라가 끊겨도 이 루프는 죽지 않는다.
+
+server 와는 파일로 주고받는다(data_dir 아래).
+  config.json  server 가 쓴 설정. 바뀌면 실행 중에 반영한다(LIVE_KEYS). source·model 은 다시 시작해야 한다.
+  control.json server 가 쓴 명령 한 건(소리 시험 등). 새 id 만 한 번 실행한다.
+  status.json  runner 가 쓴다. 상태, FPS, 현재 단계, 마지막 명령 결과, 다시 시작이 필요한 설정.
+  preview.jpg  runner 가 쓴다. 박스와 거리선을 그린 최신 화면.
 """
 
 from __future__ import annotations
@@ -14,11 +20,14 @@ from typing import Callable, Optional
 from alarm.levels import Calibration, estimate_calibration, load_calibration
 
 from .config import RunnerConfig
+from .control import ControlWatcher, FileWatcher, apply_config_changes
 from .pipeline import LEVEL_DISTANCE_M, Pipeline
-from .sound import Beeper
+from .sound import PATTERNS, Beeper
 from .sources import VideoSource
 from .spool import Reporter, Spool
 from .status import StatusWriter, draw_overlay, encode_jpeg
+
+CAL_KEYS = {"calibration", "camera_height_m", "tilt_deg", "vfov_deg"}
 
 
 def make_calibration(cfg: RunnerConfig, frame_height: int) -> Calibration:
@@ -32,6 +41,110 @@ def make_calibration(cfg: RunnerConfig, frame_height: int) -> Calibration:
     )
 
 
+class Live:
+    """실행 중에 바뀌는 것들을 한곳에 모은다: 설정 반영, 명령 처리, 상태에 실을 정보."""
+
+    def __init__(
+        self, cfg, pipe, beeper, detector, frame_height, config_path, cli_keys, log
+    ) -> None:
+        self.cfg, self.pipe, self.beeper, self.detector = cfg, pipe, beeper, detector
+        self.frame_height = frame_height
+        self.cli_keys = frozenset(cli_keys)
+        self.log = log
+        self.config_watch = FileWatcher(config_path) if config_path else None
+        self.control_watch = ControlWatcher(os.path.join(cfg.data_dir, "control.json"))
+        self.restart_required = []
+        self.ignored = []
+        self.last_control = None
+        self.cal = pipe.cal
+
+    def poll(self) -> None:
+        if self.config_watch is not None:
+            values = self.config_watch.poll()
+            if values is not None:
+                self._apply_config(values)
+        cmd = self.control_watch.poll()
+        if cmd is not None:
+            self._run_command(cmd)
+
+    def _apply_config(self, values: dict) -> None:
+        res = apply_config_changes(self.cfg, values, self.cli_keys)
+        self.ignored = res["ignored"]
+        for key in res["restart_required"]:
+            if key not in self.restart_required:
+                self.restart_required.append(key)
+        applied = res["applied"]
+        if not applied:
+            if res["ignored"] or res["restart_required"]:
+                self.log(
+                    f"설정 변경 일부만 처리: 무시={res['ignored']}, 다시 시작 필요={res['restart_required']}"
+                )
+            return
+        try:
+            cal = (
+                make_calibration(self.cfg, self.frame_height)
+                if CAL_KEYS & set(applied)
+                else None
+            )
+        except (OSError, ValueError) as exc:
+            self.log(f"거리 기준값을 다시 만들지 못해 이전 값을 쓴다: {exc}")
+            cal = None
+        self.pipe.reconfigure(
+            cal=cal,
+            min_conf=self.cfg.min_conf if "min_conf" in applied else None,
+            window=self.cfg.window if "window" in applied else None,
+            need=self.cfg.need if "need" in applied else None,
+            post_interval_s=self.cfg.post_interval_s
+            if "post_interval_s" in applied
+            else None,
+        )
+        if cal is not None:
+            self.cal = cal
+        if "mute" in applied:
+            self.beeper.mute = self.cfg.mute
+        if "min_conf" in applied and hasattr(self.detector, "min_conf"):
+            self.detector.min_conf = self.cfg.min_conf
+        self.log(f"설정을 실행 중에 반영했다: {applied}")
+
+    def _run_command(self, cmd: dict) -> None:
+        name = cmd.get("cmd")
+        result = "unknown"
+        if name == "test_sound":
+            level = cmd.get("level")
+            if isinstance(level, int) and level in PATTERNS:
+                if self.beeper.mute:
+                    result = "muted"
+                else:
+                    self.beeper.play_now(level)
+                    result = "played"
+            else:
+                result = "bad_level"
+        self.last_control = {
+            "id": cmd.get("id"),
+            "cmd": name,
+            "result": result,
+            "at": time.strftime("%H:%M:%S"),
+        }
+        self.log(f"명령 처리: {self.last_control}")
+
+    def extras(self) -> dict:
+        c = self.cal
+        return {
+            "device": self.detector.describe()
+            if hasattr(self.detector, "describe")
+            else "",
+            "calibration": {
+                "foot_5_5": round(c.foot_5_5, 4),
+                "foot_3": round(c.foot_3, 4),
+                "foot_2": round(c.foot_2, 4),
+            },
+            "restart_required": list(self.restart_required),
+            "last_control": self.last_control,
+            "mute": self.cfg.mute,
+            "min_conf": self.cfg.min_conf,
+        }
+
+
 def run(
     cfg: RunnerConfig,
     detector=None,
@@ -39,6 +152,9 @@ def run(
     beeper: Optional[Beeper] = None,
     source: Optional[VideoSource] = None,
     log: Callable[[str], None] = print,
+    config_path: Optional[str] = None,
+    cli_keys=frozenset(),
+    watch_interval_s: float = 0.5,
 ) -> dict:
     cfg.validate()
     src = source or VideoSource(cfg.source, realtime=cfg.realtime)
@@ -58,6 +174,10 @@ def run(
     spool = Spool(os.path.join(cfg.data_dir, "spool"))
     reporter = Reporter(cfg.server_url, spool, post_fn=post_fn)
     writer = StatusWriter(cfg.data_dir)
+    live = Live(cfg, pipe, beeper, detector, first.shape[0], config_path, cli_keys, log)
+    if live.config_watch is not None:
+        live.config_watch.min_interval_s = watch_interval_s
+    live.control_watch._watch.min_interval_s = watch_interval_s
 
     frames = 0
     max_level = 0
@@ -70,19 +190,23 @@ def run(
     log(
         f"시작: 입력={cfg.source}, 모델={cfg.model}, 장치={where}, 화면 높이={first.shape[0]}, 서버={cfg.server_url}"
     )
+
+    def status(level, fps=0.0):
+        data = _status(
+            state, cfg, frames, started, level, last_detect_at, reporter, spool, fps
+        )
+        data.update(live.extras())
+        return data
+
     try:
         while True:
+            live.poll()
             if frame is None:
                 if src.is_file:
                     state = "finished"
                     break
                 state = "camera_lost"
-                writer.write_status(
-                    _status(
-                        state, cfg, frames, started, 0, last_detect_at, reporter, spool
-                    ),
-                    force=True,
-                )
+                writer.write_status(status(0), force=True)
                 time.sleep(1.0)
                 if src.reopen():
                     log("카메라를 다시 연결했다")
@@ -100,7 +224,9 @@ def run(
 
             shown = None
             if res.should_post:
-                shown = draw_overlay(frame, boxes, cal, res.alarm_level, cfg.min_conf)
+                shown = draw_overlay(
+                    frame, boxes, pipe.cal, res.alarm_level, cfg.min_conf
+                )
                 last_detect_at = time.strftime("%H:%M:%S")
                 meta = {
                     "person": res.person,
@@ -117,24 +243,14 @@ def run(
                 shown = (
                     shown
                     if shown is not None
-                    else draw_overlay(frame, boxes, cal, res.alarm_level, cfg.min_conf)
+                    else draw_overlay(
+                        frame, boxes, pipe.cal, res.alarm_level, cfg.min_conf
+                    )
                 )
                 writer.write_preview(encode_jpeg(shown, 75))
             if writer.status_due():
                 fps = frames / max(1e-6, time.monotonic() - started)
-                writer.write_status(
-                    _status(
-                        state,
-                        cfg,
-                        frames,
-                        started,
-                        res.alarm_level,
-                        last_detect_at,
-                        reporter,
-                        spool,
-                        fps,
-                    )
-                )
+                writer.write_status(status(res.alarm_level, fps))
 
             if cfg.max_frames and frames >= cfg.max_frames:
                 state = "finished"
@@ -148,20 +264,7 @@ def run(
         log("사용자가 멈췄다")
     finally:
         elapsed = time.monotonic() - started
-        writer.write_status(
-            _status(
-                state,
-                cfg,
-                frames,
-                started,
-                0,
-                last_detect_at,
-                reporter,
-                spool,
-                frames / max(1e-6, elapsed),
-            ),
-            force=True,
-        )
+        writer.write_status(status(0, frames / max(1e-6, elapsed)), force=True)
         reporter.close()
         if own_beeper:
             beeper.close()

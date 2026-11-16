@@ -27,6 +27,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .runner_api import build_router
+
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 SHOT_NAME = re.compile(r"^CAP-\d+\.(jpg|png)$")
 TIME_RE = re.compile(r"^\d{2}:\d{2}:\d{2}$")
@@ -91,10 +93,31 @@ def _image_ext(head: bytes) -> Optional[str]:
     return None
 
 
+def _prune(con, shots: Path, max_records: int) -> int:
+    """기록이 max_records 를 넘으면 오래된 것부터 지운다(캡처 파일도). 디스크가 가득 차지 않게 한다."""
+    old = con.execute(
+        "SELECT n, shot FROM detections ORDER BY n DESC LIMIT -1 OFFSET ?", (max_records,)
+    ).fetchall()
+    for r in old:
+        if r["shot"]:
+            try:
+                (shots / Path(r["shot"]).name).unlink()
+            except FileNotFoundError:
+                pass
+        con.execute("DELETE FROM detections WHERE n=?", (r["n"],))
+    return len(old)
+
+
 def create_app(
-    data_dir: Optional[str] = None, web_dist: Optional[str] = None
+    data_dir: Optional[str] = None,
+    web_dist: Optional[str] = None,
+    runner_dir: Optional[str] = None,
+    max_records: int = 1000,
 ) -> FastAPI:
-    """data_dir 에 DB 와 캡처를 둔다. web_dist 가 있으면 화면도 같이 보여 준다."""
+    """data_dir 에 DB 와 캡처를 둔다. web_dist 가 있으면 화면도 같이 보여 준다.
+
+    runner_dir 은 runner(감지 프로그램)가 상태·미리보기를 쓰고 설정·명령을 읽는 폴더다(기본 data/runner).
+    max_records 를 넘는 오래된 기록과 캡처는 자동으로 지운다."""
     root = Path(data_dir or os.environ.get("ALASKA_SERVER_DIR", "data/server"))
     shots = root / "shots"
     shots.mkdir(parents=True, exist_ok=True)
@@ -181,6 +204,7 @@ def create_app(
                 con.execute(
                     "UPDATE detections SET shot=? WHERE n=?", (f"api/shots/{name}", n)
                 )
+            _prune(con, shots, max_records)
             con.commit()
             row = con.execute("SELECT * FROM detections WHERE n=?", (n,)).fetchone()
         finally:
@@ -215,6 +239,9 @@ def create_app(
         if not path.is_file():
             raise HTTPException(status_code=404, detail="없는 캡처")
         return FileResponse(str(path))
+
+    rdir = Path(runner_dir or os.environ.get("ALASKA_RUNNER_DIR", "data/runner"))
+    app.include_router(build_router(rdir))
 
     dist_dir = Path(web_dist) if web_dist else Path("web/dist")
     if dist_dir.is_dir():

@@ -39,9 +39,16 @@ python -m runner --config data/runner/config.json            # 설정 파일
 
 ## 시험
 ```bash
-python -m unittest runner.test_runner -v     # 27개 (모델·카메라·서버·스피커는 가짜로)
+python -m unittest runner.test_runner -v     # 32개 (모델·카메라·서버·스피커는 가짜로)
 ```
 Python 3.8 과 3.11 에서 확인했습니다(Jetson 계열은 3.8).
 
+## server 와 주고받기 (실행 중에 설정 바꾸기, 명령)
+`data/runner/` 의 파일로 주고받는다. 서버가 죽어도 runner 는 계속 돈다.
+- `config.json`(server 가 씀): 바뀌면 **실행 중에** 반영한다 — `min_conf`, `calibration`, `camera_height_m`, `tilt_deg`, `vfov_deg`, `window`, `need`, `post_interval_s`, `mute`. `source`·`model`·`device` 는 다시 시작해야 하고, 바뀌었다고 `status.json` 의 `restart_required` 로만 알린다.
+  검사에 실패한 값은 통째로 무시하고 이전 설정을 유지한다. **명령줄로 직접 준 값은 파일보다 우선**이라 파일이 바꾸지 못한다.
+- `control.json`(server 가 씀): `{"id", "cmd": "test_sound", "level"}` 새 id 만 한 번 실행한다. 시작하기 전에 남아 있던 명령은 실행하지 않는다. 결과는 `status.json` 의 `last_control`(`played` / `muted` / `bad_level`) 로 알린다.
+- `python -m runner` 만 쳐도 `data/runner/config.json` 이 있으면 그 설정으로 시작한다.
+
 ## 아직 없는 것
-설정 파일 변경을 실행 중에 반영하기, 서버의 설정·상태·미리보기 API 연결(2단계), 부팅 자동 시작과 준비 완료 소리(3단계).
+부팅 자동 시작과 준비 완료 소리(3단계), 카메라 번호 자동 선택.

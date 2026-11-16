@@ -483,5 +483,126 @@ class EndToEndTest(unittest.TestCase):
             )
 
 
+class ControlTest(unittest.TestCase):
+    def test_watcher_reads_only_changes_and_survives_garbage(self):
+        from runner.control import FileWatcher
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "config.json"
+            p.write_text(json.dumps({"mute": False}), encoding="utf-8")
+            now = [0.0]
+            w = FileWatcher(str(p), min_interval_s=0.0, clock=lambda: now[0])
+            self.assertIsNone(w.poll())  # 시작할 때 이미 있던 내용은 변경이 아니다
+            p.write_text(json.dumps({"mute": True, "pad": "x" * 5}), encoding="utf-8")
+            self.assertEqual(w.poll()["mute"], True)
+            self.assertIsNone(w.poll())  # 같은 내용을 두 번 주지 않는다
+            p.write_text("{깨진 json", encoding="utf-8")
+            self.assertIsNone(w.poll())  # 쓰는 중이거나 깨졌다
+            p.write_text(json.dumps({"mute": False, "pad": "yy"}), encoding="utf-8")
+            self.assertEqual(w.poll()["mute"], False)
+
+    def test_apply_live_vs_restart_vs_invalid(self):
+        from runner.control import apply_config_changes
+
+        cfg = RunnerConfig(source="a.mp4")
+        res = apply_config_changes(cfg, {"min_conf": 0.6, "mute": True, "source": "b.mp4", "model": "x.pt"})
+        self.assertEqual(sorted(res["applied"]), ["min_conf", "mute"])
+        self.assertEqual(sorted(res["restart_required"]), ["model", "source"])
+        self.assertEqual((cfg.min_conf, cfg.mute, cfg.source), (0.6, True, "a.mp4"))  # source 는 아직 그대로
+        before = dict(cfg.__dict__)
+        res = apply_config_changes(cfg, {"min_conf": 5, "mute": False})  # 하나라도 틀리면 아무것도 바꾸지 않는다
+        self.assertEqual(res["applied"], [])
+        self.assertTrue(res["ignored"])
+        self.assertEqual(cfg.__dict__, before)
+        res = apply_config_changes(cfg, {"min_conf": "abc"})
+        self.assertEqual(res["applied"], [])
+        res = apply_config_changes(cfg, {"mute": False}, cli_keys={"mute"})  # 명령줄 값이 우선
+        self.assertEqual(res["applied"], [])
+        self.assertTrue(cfg.mute)
+
+    def test_control_command_runs_once(self):
+        from runner.control import ControlWatcher
+
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "control.json"
+            p.write_text(json.dumps({"id": "old", "cmd": "test_sound", "level": 1}), encoding="utf-8")
+            w = ControlWatcher(str(p), min_interval_s=0.0)
+            self.assertIsNone(w.poll())  # 시작 전에 남은 명령은 실행하지 않는다
+            p.write_text(json.dumps({"id": "a1", "cmd": "test_sound", "level": 2}), encoding="utf-8")
+            self.assertEqual(w.poll()["id"], "a1")
+            self.assertIsNone(w.poll())
+            p.write_text(json.dumps({"id": "a1", "cmd": "test_sound", "level": 3, "pad": 1}), encoding="utf-8")
+            self.assertIsNone(w.poll())  # 같은 id 는 다시 실행하지 않는다
+
+    def test_pipeline_reconfigure(self):
+        p = Pipeline(CAL, clock=lambda: 0.0)
+        for _ in range(2):
+            p.process([box(0.60)])
+        self.assertEqual(p.process([box(0.60)]).alarm_level, 1)
+        p.reconfigure(cal=Calibration(0.20, 0.30, 0.40, frame_height=H))
+        self.assertEqual(p.process([box(0.60)]).frame_level, 3)  # 새 기준값이 바로 쓰인다
+        p.reconfigure(min_conf=0.95)
+        self.assertEqual(p.process([box(0.60, 0.9)]).frame_level, 0)
+        p.reconfigure(window=5, need=5)
+        self.assertEqual(p._state.window, 5)
+
+
+class LiveRunTest(unittest.TestCase):
+    """실행 도중 config.json 과 control.json 이 바뀌면 반영되는지 끝까지 돌려서 본다."""
+
+    def test_config_and_command_take_effect_mid_run(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            video = root / "v.mp4"
+            make_video(video, frames=40)
+            data = root / "data"
+            data.mkdir()
+            cfgfile = data / "config.json"
+            cfgfile.write_text(json.dumps({"mute": False}), encoding="utf-8")
+
+            levels_seen = []
+            heard = []
+            beeper = Beeper(player=lambda w: heard.append(1) or True)
+
+            class Det:
+                i = 0
+                min_conf = 0.25
+
+                def detect(self, frame):
+                    Det.i += 1
+                    if Det.i == 10:
+                        # 10번째 프레임에서 설정과 명령을 바꾼다(server 가 하는 일)
+                        cfgfile.write_text(
+                            json.dumps({"mute": True, "model": "other.pt", "calibration": None, "tilt_deg": 40.0}),
+                            encoding="utf-8",
+                        )
+                        (data / "control.json").write_text(
+                            json.dumps({"id": "t1", "cmd": "test_sound", "level": 2}), encoding="utf-8"
+                        )
+                    levels_seen.append(self.min_conf)
+                    return [box(0.9)]
+
+            cfg = RunnerConfig(source=str(video), data_dir=str(data), post_interval_s=0.0, preview=False)
+            summary = run(
+                cfg,
+                detector=Det(),
+                post_fn=lambda *a, **k: {},
+                beeper=beeper,
+                log=lambda s: None,
+                config_path=str(cfgfile),
+                watch_interval_s=0.0,
+            )
+            beeper.close()
+            self.assertEqual(summary["frames"], 40)
+            self.assertTrue(cfg.mute)  # 실행 중에 반영됐다
+            self.assertEqual(cfg.tilt_deg, 40.0)
+            status = json.loads((data / "status.json").read_text(encoding="utf-8"))
+            self.assertIn("model", status["restart_required"])  # source·model 은 다시 시작해야 한다
+            self.assertEqual(status["last_control"]["id"], "t1")
+            self.assertEqual(status["last_control"]["result"], "muted")  # mute 가 먼저 반영돼 소리를 내지 않았다
+            self.assertTrue(status["mute"])
+            self.assertIn("foot_5_5", status["calibration"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -39,8 +39,9 @@ class RunnerConfig:
     preview: bool = True
     max_frames: int = 0  # 0이면 끝까지
 
-    def validate(self) -> "RunnerConfig":
-        if not str(self.source).strip():
+    def validate(self, require_source: bool = True) -> "RunnerConfig":
+        """값 범위를 검사한다. 설정 화면에서 저장할 때는 아직 입력을 안 골랐을 수 있어 require_source=False 로 부른다."""
+        if require_source and not str(self.source).strip():
             raise ValueError(
                 "source 가 비었다. 영상 파일, 카메라 번호, 또는 rtsp:// 주소를 준다"
             )
@@ -65,6 +66,52 @@ class RunnerConfig:
         if self.max_frames < 0:
             raise ValueError(f"max_frames 는 0 이상이다: {self.max_frames}")
         return self
+
+
+# 실행 중에 바꿔도 바로 반영되는 설정(재시작 없이). 나머지는 다시 시작해야 반영된다.
+LIVE_KEYS = frozenset(
+    {
+        "min_conf",
+        "calibration",
+        "camera_height_m",
+        "tilt_deg",
+        "vfov_deg",
+        "window",
+        "need",
+        "post_interval_s",
+        "mute",
+    }
+)
+RESTART_KEYS = frozenset({"source", "model", "device", "server_url", "data_dir", "realtime", "preview", "max_frames"})
+
+
+def check_types(values: dict) -> dict:
+    """설정 값의 종류가 맞는지 본다(JSON 으로 온 "abc" 같은 값이 비교 연산에서 터지지 않게). 숫자는 정수와 실수를 모두 받는다."""
+    types = {f.name: f.type for f in fields(RunnerConfig)}
+    out = {}
+    for key, value in values.items():
+        if key not in types:
+            raise ValueError(f"모르는 설정: {key}")
+        want = str(types[key]).replace("typing.", "")
+        if key == "source" and isinstance(value, int) and not isinstance(value, bool):
+            value = str(value)  # 카메라 번호를 숫자로 적어도 된다
+        if value is None:
+            if want.startswith("Optional"):
+                out[key] = None
+                continue
+            raise ValueError(f"{key} 는 비울 수 없다")
+        if want in ("bool", "<class 'bool'>"):
+            ok = isinstance(value, bool)
+        elif want in ("int", "<class 'int'>"):
+            ok = isinstance(value, int) and not isinstance(value, bool)
+        elif want in ("float", "<class 'float'>"):
+            ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        else:  # str, Optional[str]
+            ok = isinstance(value, str)
+        if not ok:
+            raise ValueError(f"{key} 의 값 종류가 맞지 않는다: {value!r}")
+        out[key] = float(value) if "float" in want else value
+    return out
 
 
 def load_config_file(path: str) -> dict:
@@ -96,6 +143,6 @@ def build_config(
     unknown = sorted(set(merged) - known)
     if unknown:
         raise ValueError(f"모르는 설정: {unknown}")
-    cfg = RunnerConfig(**merged)
+    cfg = RunnerConfig(**check_types(merged))
     cfg.source = str(cfg.source)
     return cfg.validate()

@@ -10,6 +10,7 @@ Jetson 이 올린 감지 캡처와 기록을 모아 두고, `web/` 화면이 읽
 pip install -r server/requirements.txt
 python -m server                      # http://127.0.0.1:8000
 python -m server --host 0.0.0.0       # 같은 네트워크의 Jetson 이 올릴 때
+python -m server --runner-dir data/runner --max-records 1000   # runner 와 주고받는 폴더, 보관할 기록 수
 ```
 
 - 기록은 `data/server/detections.db`, 캡처는 `data/server/shots/` 에 쌓입니다(레포에 올리지 않습니다).
@@ -40,6 +41,28 @@ except Exception:
 ```
 
 `level` 은 `alarm.levels` 가 정한 단계(0~3)를 그대로 넣습니다.
+
+## runner(감지 프로그램) 제어 API
+
+server 와 runner 는 **별도 프로세스**이고 **파일로** 주고받습니다(`--runner-dir`, 기본 `data/runner`). 한쪽이 죽어도 다른 쪽은 계속 돕니다. runner 가 꺼져 있으면 `/api/status` 가 `off` 를 돌려줍니다.
+
+| 요청 | 하는 일 |
+|---|---|
+| `GET /api/status` | runner 상태: `online`, `state`(`running` `camera_lost` `finished` `stale` `off`), FPS, 현재 경보 단계, 사용 장치(GPU/CPU), 거리선 위치, 마지막 명령 결과, 다시 시작이 필요한 설정 |
+| `GET /api/config` | 현재 설정, 기본값, **실행 중에 바로 반영되는 설정**(`live_keys`)과 **다시 시작해야 하는 설정**(`restart_keys`) |
+| `PUT /api/config` | `{"values": {...}}` 바꿀 설정만 보낸다. 값을 검사해서 틀리면 422 이고 파일은 그대로다. 통과하면 `config.json` 에 저장하고 runner 가 읽어서 반영한다 |
+| `POST /api/test-sound` | `{"level": 1\|2\|3}` 경고음 시험. 매번 새 id 로 `control.json` 에 쓰고 runner 가 한 번만 실행한다 |
+| `POST /api/calibration` | `{camera_height_m, tilt_deg, vfov_deg, frame_height, save}` 5.5m·3m·2m **거리선 위치**(화면 비율과 픽셀)를 계산한다. `save: true` 면 설정에 저장한다 |
+| `POST /api/calibration/fit` | `{distance_m, foot_ratio, camera_height_m, tilt_deg, save}` 한 지점에서 잰 발 위치로 화각을 맞추고 거리선을 계산한다 |
+| `GET /api/cameras` | 연결된 카메라 목록(번호, 해상도). runner 가 쓰고 있는 번호는 `in_use` 로 표시 |
+| `GET /api/preview` | 박스와 거리선을 그린 최신 화면 스트림(MJPEG). `/api/preview.jpg` 는 한 장 |
+
+- 실행 중에 바로 반영되는 설정: `min_conf`, `calibration`, `camera_height_m`, `tilt_deg`, `vfov_deg`, `window`, `need`, `post_interval_s`, `mute`. `source`, `model`, `device` 등은 다시 시작해야 반영된다.
+- **한 지점 보정**: 높이와 기울기를 알면 카메라에서 가까운 한 곳(약 1.5~2m)에 서서 발이 화면 몇 %에 찍혔는지만 재면 된다. **먼 곳(3m 이상)에서 재면 오차가 크다**: 3m 에서 발 위치를 화면 높이의 1%만 잘못 재도 화각이 59~124도로 흔들리고, 2m 는 70~97도, 1.5m 는 77~88도다(참값 82도 가정). 정확하게 하려면 5.5m·3m·2m 거리기준 영상으로 `alarm.levels.calibrate_from_samples` 를 쓴다.
+- 설정을 바꾸는 요청(`PUT /api/config`, `POST /api/test-sound`, 저장하는 `calibration`)은 환경변수 `ALASKA_TOKEN` 을 정하면 `X-Token` 헤더가 같아야 한다. 정하지 않으면 같은 네트워크의 누구나 바꿀 수 있다(로그인이 없는 시연용).
+- 기록이 `--max-records`(기본 1000)를 넘으면 오래된 기록과 캡처 파일을 자동으로 지운다.
+
+시험: `python -m unittest server.test_app server.test_runner_api -v` (httpx 필요, 37개)
 
 ## 시험
 

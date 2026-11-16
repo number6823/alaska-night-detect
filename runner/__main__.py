@@ -13,6 +13,7 @@
 
 import argparse
 import json
+import os
 
 from .app import run
 from .config import build_config, load_config_file
@@ -83,9 +84,19 @@ def main() -> None:
     cli = {k: v for k, v in vars(a).items() if k not in ("config", "no_preview")}
     if a.no_preview:
         cli["preview"] = False
-    file_values = load_config_file(a.config) if a.config else {}
+    # 설정 파일: --config 로 준 것, 없으면 data_dir 의 config.json (server 설정 화면이 저장하는 곳)
+    data_dir = cli.get("data_dir") or "data/runner"
+    config_path = a.config
+    if not config_path:
+        default = os.path.join(data_dir, "config.json")
+        config_path = default if os.path.isfile(default) else None
+    file_values = load_config_file(config_path) if config_path else {}
+    # server 가 config.json 을 고치면 실행 중에 반영한다. 명령줄로 직접 준 값은 파일보다 우선이라 그대로 둔다
+    cli_keys = {k for k, v in cli.items() if v is not None}
     cfg = build_config(file_values, cli)
-    summary = run(cfg)
+    if not config_path:
+        config_path = os.path.join(data_dir, "config.json")  # 나중에 만들어져도 읽을 수 있게
+    summary = run(cfg, config_path=config_path, cli_keys=cli_keys)
     print(json.dumps(summary, ensure_ascii=False))
 
 
