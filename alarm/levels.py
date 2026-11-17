@@ -106,13 +106,61 @@ def estimate_calibration(
         a > b for a, b in zip(distances_m, distances_m[1:])
     ):
         raise ValueError(f"distances_m 은 큰 거리부터 3개여야 한다: {distances_m}")
-    half = math.tan(math.radians(vfov_deg) / 2)
-    ys = []
-    for d in distances_m:
-        theta = math.atan(camera_height_m / d) - math.radians(tilt_deg)
-        ys.append(0.5 + math.tan(theta) / (2 * half))
+    ys = [foot_ratio_at(d, camera_height_m, tilt_deg, vfov_deg) for d in distances_m]
     ys = [min(1.0, max(0.0, y)) for y in ys]
     return Calibration(ys[0], ys[1], ys[2], frame_height, round(camera_height_m * 100))
+
+
+def foot_ratio_at(
+    distance_m: float,
+    camera_height_m: float = 0.7,
+    tilt_deg: float = 15.0,
+    vfov_deg: float = 60.0,
+) -> float:
+    """바닥에서 distance_m 떨어진 곳에 선 사람의 발이 화면 높이의 몇 %(0=맨 위, 1=맨 아래)에 찍히나(핀홀 모델)."""
+    if distance_m <= 0:
+        raise ValueError(f"distance_m 은 0보다 커야 한다: {distance_m}")
+    if camera_height_m <= 0:
+        raise ValueError(f"camera_height_m 은 0보다 커야 한다: {camera_height_m}")
+    if not 0.0 < vfov_deg < 180.0:
+        raise ValueError(f"vfov_deg 는 0~180 사이다: {vfov_deg}")
+    half = math.tan(math.radians(vfov_deg) / 2)
+    theta = math.atan(camera_height_m / distance_m) - math.radians(tilt_deg)
+    return 0.5 + math.tan(theta) / (2 * half)
+
+
+def fit_vfov(
+    distance_m: float,
+    foot_ratio: float,
+    camera_height_m: float = 0.7,
+    tilt_deg: float = 15.0,
+) -> float:
+    """한 지점에서 잰 값으로 세로 화각(도)을 거꾸로 구한다. 한 지점 보정에 쓴다.
+
+    높이와 기울기를 알고, distance_m 에 선 사람의 발이 화면 높이의 foot_ratio 에 찍혔다면
+    foot_ratio = 0.5 + tan(θ) / (2 tan(vfov/2)) 에서 화각이 정해진다. 5.5m·3m·2m 세 곳에 서지 않아도
+    한 곳만 재면 나머지 거리는 이 화각으로 계산한다.
+
+    주의: 기울기와 비슷한 각도에 있는 지점(예: 기울기 15도, 높이 70cm 일 때 3m)은 발이 화면 한가운데 근처라
+    작은 측정 오차에도 화각이 크게 흔들린다. 카메라에서 더 가까운 지점(예: 2m)에서 재는 것이 정확하다.
+    """
+    if not 0.0 < foot_ratio < 1.0:
+        raise ValueError(f"foot_ratio 는 0~1 사이다: {foot_ratio}")
+    if distance_m <= 0:
+        raise ValueError(f"distance_m 은 0보다 커야 한다: {distance_m}")
+    theta = math.atan(camera_height_m / distance_m) - math.radians(tilt_deg)
+    off = foot_ratio - 0.5
+    if abs(off) < 1e-6 or (theta > 0) != (off > 0):
+        raise ValueError(
+            "높이·기울기·위치가 맞지 않아 화각을 못 구한다. "
+            "발이 화면 한가운데 아래쪽에 찍혔는지, 높이와 기울기 입력이 맞는지 확인한다"
+        )
+    vfov = math.degrees(2 * math.atan(math.tan(theta) / (2 * off)))
+    if not 20.0 <= vfov <= 150.0:
+        raise ValueError(
+            f"구한 화각({vfov:.0f}도)이 상식 범위(20~150도)를 벗어난다. 입력을 확인한다"
+        )
+    return vfov
 
 
 def _median(values: Sequence[float]) -> float:

@@ -151,6 +151,45 @@ class CalibrationTest(unittest.TestCase):
             calibrate_from_samples([], [person(0.7)], [person(0.85)], frame_height=H)
 
 
+class FitVfovTest(unittest.TestCase):
+    def test_roundtrip_recovers_the_field_of_view(self):
+        from alarm.levels import fit_vfov, foot_ratio_at
+
+        for vfov in (45.0, 60.0, 90.0, 110.0):
+            y = foot_ratio_at(3.0, 0.7, 15.0, vfov)
+            self.assertAlmostEqual(fit_vfov(3.0, y, 0.7, 15.0), vfov, places=6)
+
+    def test_one_point_predicts_the_other_distances(self):
+        from alarm.levels import fit_vfov, foot_ratio_at
+
+        # 실제 카메라는 화각 82도라고 하자. 3m 에서만 재고, 5.5m·2m 를 맞게 예측해야 한다
+        truth = 82.0
+        y3 = foot_ratio_at(3.0, 0.7, 15.0, truth)
+        vfov = fit_vfov(3.0, y3, 0.7, 15.0)
+        for d in (5.5, 2.0):
+            self.assertAlmostEqual(
+                foot_ratio_at(d, 0.7, 15.0, vfov),
+                foot_ratio_at(d, 0.7, 15.0, truth),
+                places=6,
+            )
+
+    def test_bad_inputs_are_rejected(self):
+        from alarm.levels import fit_vfov
+
+        with self.assertRaises(ValueError):
+            fit_vfov(3.0, 0.5)  # 화면 한가운데는 화각을 정할 수 없다
+        with self.assertRaises(ValueError):
+            fit_vfov(3.0, 1.2)
+        with self.assertRaises(ValueError):
+            fit_vfov(0, 0.6)
+        with self.assertRaises(ValueError):
+            fit_vfov(
+                3.0, 0.2
+            )  # 기울기 15도에서 3m 발이 화면 위쪽일 수는 없다(부호가 안 맞음)
+        with self.assertRaises(ValueError):
+            fit_vfov(3.0, 0.5001)  # 터무니없이 큰 화각
+
+
 class AlarmStateTest(unittest.TestCase):
     def run_levels(self, levels, **kw):
         st = AlarmState(**kw)
