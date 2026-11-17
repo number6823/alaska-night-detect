@@ -16,6 +16,7 @@ from runner.calibrate import (
     build_calibration,
     collect_samples,
     find_plateaus,
+    fit_geometry,
     parse_times,
     pick_spans,
     sanity_report,
@@ -156,6 +157,32 @@ class HelpersTest(unittest.TestCase):
         self.assertTrue(
             any("확인한다" in n for n in sanity_report(summary2, 0.7, 15.0))
         )
+
+
+class FitGeometryTest(unittest.TestCase):
+    def test_recovers_tilt_and_vfov_from_three_points(self):
+        tilt, vfov, worst = fit_geometry([F55, F3, F2], 0.7)
+        self.assertAlmostEqual(tilt, 15.0, delta=0.5)
+        self.assertAlmostEqual(vfov, 82.0, delta=1.5)
+        self.assertLess(worst, 0.002)
+
+    def test_real_shoot_values_are_not_flagged(self):
+        # 11/16 R5 거리기준 영상에서 잰 값. 2m 한 점으로 화각을 구하면 145도가 나와 거짓 경고가 떴다
+        summary = [
+            {"name": "5.5m", "foot": 0.308},
+            {"name": "3m", "foot": 0.428},
+            {"name": "2m", "foot": 0.512},
+        ]
+        notes = sanity_report(summary, 0.7, 15.0)
+        self.assertFalse(any("확인한다" in n for n in notes), notes)
+
+    def test_far_mark_misplaced_is_flagged(self):
+        summary = [
+            {"name": "5.5m", "foot": F55 + 0.06},
+            {"name": "3m", "foot": F3},
+            {"name": "2m", "foot": F2},
+        ]
+        self.assertTrue(any("확인한다" in n for n in sanity_report(summary, 0.7, 15.0)))
 
 
 class CollectTest(unittest.TestCase):

@@ -24,7 +24,6 @@ from typing import List, Optional, Sequence, Tuple
 
 from alarm.levels import (
     calibrate_from_samples,
-    fit_vfov,
     foot_ratio_at,
     save_calibration,
 )
@@ -195,31 +194,86 @@ def build_calibration(
     return cal, summary
 
 
+SANITY_TOL = (
+    0.02  # 세 점을 맞춘 뒤에도 이보다 어긋나면 표시 위치나 높이 입력을 의심한다
+)
+SANITY_VFOV = (20.0, 150.0)  # 맞춘 세로 화각이 이 범위 밖이면 말이 안 된다
+SANITY_TILT = (-10.0, 60.0)  # 맞춘 기울기(아래로 +)가 이 범위 밖이면 말이 안 된다
+DISTANCES = (5.5, 3.0, 2.0)
+
+
+def fit_geometry(
+    foots: Sequence[float], camera_height_m: float
+) -> Tuple[float, float, float]:
+    """세 거리(5.5m·3m·2m)에서 잰 발 위치에 기울기와 세로 화각을 함께 맞춘다. (기울기, 화각, 가장 큰 오차).
+
+    한 점만으로 화각을 구하면 측정 오차에 크게 흔들리므로(특히 화면 한가운데 근처 지점) 세 점을 다 쓴다.
+    표준 라이브러리만 쓰는 격자 탐색이다(굵게 찾은 뒤 근처를 촘촘하게).
+    """
+
+    def loss(tilt: float, vfov: float) -> float:
+        return sum(
+            (foot_ratio_at(d, camera_height_m, tilt, vfov) - f) ** 2
+            for d, f in zip(DISTANCES, foots)
+        )
+
+    best = None
+    tilt = SANITY_TILT[0]
+    while tilt <= SANITY_TILT[1]:
+        vfov = SANITY_VFOV[0]
+        while vfov <= SANITY_VFOV[1]:
+            err = loss(tilt, vfov)
+            if best is None or err < best[0]:
+                best = (err, tilt, vfov)
+            vfov += 2.0
+        tilt += 1.0
+    _, t0, v0 = best
+    tilt = t0 - 1.5  # 굵게 찾은 값 근처를 촘촘하게 다시 본다
+    while tilt <= t0 + 1.5:
+        vfov = max(1.0, v0 - 2.5)
+        while vfov <= v0 + 2.5:
+            err = loss(tilt, vfov)
+            if err < best[0]:
+                best = (err, tilt, vfov)
+            vfov += 0.2
+        tilt += 0.1
+    _, tilt, vfov = best
+    worst = max(
+        abs(foot_ratio_at(d, camera_height_m, tilt, vfov) - f)
+        for d, f in zip(DISTANCES, foots)
+    )
+    return tilt, vfov, worst
+
+
 def sanity_report(
     summary: Sequence[dict], camera_height_m: float, tilt_deg: float
 ) -> List[str]:
-    """찾은 발 위치가 기하학적으로 말이 되는지 본다. 2m 구간으로 화각을 구해 5.5m·3m 를 예측해 비교한다."""
-    notes = []
+    """찾은 발 위치가 기하학적으로 말이 되는지 본다.
+
+    렌즈 높이는 알고 있으니 기울기와 세로 화각을 세 점에 함께 맞춰 보고, 맞춘 뒤에도 어긋나거나
+    맞춘 값이 상식 밖이면 표시 위치(5.5m·3m·2m)나 높이 입력을 확인하라고 알린다.
+    """
     by = {s["name"]: s for s in summary}
-    try:
-        vfov = fit_vfov(2.0, by["2m"]["foot"], camera_height_m, tilt_deg)
-    except ValueError as exc:
-        return [f"점검 생략: 2m 위치로 화각을 못 구했다 ({exc})"]
-    notes.append(
-        f"2m 위치로 구한 세로 화각 약 {vfov:.0f}도 (높이 {camera_height_m}m, 기울기 {tilt_deg}도 가정)"
-    )
-    for name, d in (("5.5m", 5.5), ("3m", 3.0)):
-        pred = foot_ratio_at(d, camera_height_m, tilt_deg, vfov)
-        got = by[name]["foot"]
-        diff = got - pred
-        flag = (
-            ""
-            if abs(diff) <= 0.03
-            else "  <- 차이가 커서 표시 위치나 높이·기울기 입력을 확인한다"
-        )
+    foots = [by[n]["foot"] for n in DIST_NAMES]
+    tilt, vfov, worst = fit_geometry(foots, camera_height_m)
+    notes = [
+        f"세 점에 맞춘 값: 기울기 {tilt:.0f}도, 세로 화각 {vfov:.0f}도 (높이 {camera_height_m}m 가정, 입력한 기울기 {tilt_deg:.0f}도)"
+    ]
+    problems = []
+    if worst > SANITY_TOL:
+        problems.append(f"맞춘 뒤에도 가장 어긋난 곳이 {worst:.3f}")
+    if not SANITY_VFOV[0] < vfov < SANITY_VFOV[1] or not (
+        SANITY_TILT[0] < tilt < SANITY_TILT[1]
+    ):
+        problems.append("맞춘 화각이나 기울기가 상식 범위 밖")
+    if problems:
         notes.append(
-            f"{name}: 잰 값 {got:.3f}, 예측 {pred:.3f}, 차이 {diff:+.3f}{flag}"
+            "  <- "
+            + ", ".join(problems)
+            + ": 표시 위치나 높이 입력을 확인한다 (기준값은 영상에서 잰 값 그대로 저장한다)"
         )
+    else:
+        notes.append(f"잰 값이 이 값에 맞는다 (가장 큰 오차 {worst:.3f})")
     return notes
 
 
