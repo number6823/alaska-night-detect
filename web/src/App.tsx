@@ -19,6 +19,8 @@ export default function App() {
     fetchDetections().then(({ rows, live }) => {
       if (!alive) return;
       setRows(rows);
+      // 서버에 저장된 오경보 표시를 불러와, 새로고침해도 표시가 남게 한다.
+      setFlagged(new Set(rows.filter((r) => r.false_alarm).map((r) => r.id)));
       setLive(live);
       setSelectedId((cur) => cur ?? rows[0]?.id ?? null);
     });

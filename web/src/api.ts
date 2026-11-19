@@ -21,8 +21,8 @@ export async function fetchDetections(): Promise<DetectionsResult> {
   }
 }
 
-// 오경보 표시를 서버에 남기려면 PATCH /api/detections/<id> 가 필요하다.
-// 지금은 화면 안에서만 바뀐다.
+// 오경보 표시를 PATCH /api/detections/<id> 로 서버에 남긴다.
+// 서버가 없으면 화면 안에서만 바뀐다.
 export async function flagDetection(id: string, flagged: boolean): Promise<boolean> {
   try {
     await fetch(`/api/detections/${encodeURIComponent(id)}`, {

@@ -28,6 +28,8 @@ export interface Detection {
   level: Level;
   /** 추정 거리(m). 0 이면 추정값 없음 */
   dist: number;
+  /** 서버에 저장된 오경보 표시. 서버가 있을 때만 들어온다 */
+  false_alarm?: boolean;
   credit?: Credit;
 }
 

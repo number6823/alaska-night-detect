@@ -71,7 +71,7 @@ web/
 
 ## 서버와 주고받는 것
 
-아직 서버가 없습니다. 화면은 `GET /api/detections`를 먼저 시도하고, 실패하면 `demoData.ts`로 넘어갑니다. 상단에 **"Jetson 연결됨"** / **"서버 없음 · 예시 기록"** 으로 구분해 표시합니다.
+서버는 `server/`(`python -m server`)입니다. 화면은 `GET /api/detections`를 먼저 시도하고, 실패하면 `demoData.ts`로 넘어갑니다. 상단에 **"Jetson 연결됨"** / **"서버 없음 · 예시 기록"** 으로 구분해 표시합니다.
 
 ```jsonc
 // GET /api/detections  →  Detection[]
@@ -84,12 +84,13 @@ web/
   "top": 0.93,                  // 가장 높은 신뢰도
   "ms": 24,                     // 추론 시간
   "level": 2,                   // 경고 단계 0~3
-  "dist": 3.1                   // 추정 거리(m)
+  "dist": 3.1,                  // 추정 거리(m)
+  "false_alarm": false          // 오경보 표시(서버가 보관, 화면을 열 때 불러옴)
 }
 ```
 
 - `POST /api/detections` — Jetson이 캡처와 감지 정보를 올립니다.
-- `PATCH /api/detections/<id>` — 오경보 표시를 남깁니다. **아직 없어서 지금은 화면 안에서만 바뀝니다.**
+- `PATCH /api/detections/<id>` — 오경보 표시를 서버에 남깁니다. 서버가 없으면 화면 안에서만 바뀝니다.
 
 ### 경고 단계
 

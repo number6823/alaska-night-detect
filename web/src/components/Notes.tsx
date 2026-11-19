@@ -21,7 +21,7 @@ export default function Notes({ live, onToggleTheme }: Props) {
           이 화면이 <code>GET /api/detections</code>로 읽습니다. 서버가 없으면 예시 기록으로 넘어갑니다.
         </li>
         <li>
-          오경보 표시를 서버에 남기려면 <code>PATCH /api/detections/&lt;id&gt;</code>가 필요합니다.
+          오경보 표시는 <code>PATCH /api/detections/&lt;id&gt;</code>로 서버에 남깁니다. 서버가 없으면 화면 안에서만 바뀝니다.
         </li>
         <li>
           후방 카메라 영상은 아직 촬영 전이라 길거리 야간 사진으로 대신했습니다.
