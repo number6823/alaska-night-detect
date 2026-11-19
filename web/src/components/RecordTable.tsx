@@ -28,11 +28,15 @@ export default function RecordTable({
         <h2>감지 기록</h2>
         <Filters value={filter} onChange={onFilter} />
       </header>
+      <p className="hint">
+        경보가 잘못 울렸다면(사람·자전거가 없는데 울림) <b>오경보로 표시</b>하세요. 서버에 저장되어
+        오경보율 계산과 재학습 자료(“이건 사람이 아니다”)로 쓰입니다.
+      </p>
       <div className="tablewrap">
         <table>
           <thead>
             <tr>
-              <th>시각</th><th>종류</th><th>경고</th><th>최고 신뢰도</th><th>박스</th><th>오경보</th>
+              <th>시각</th><th>종류</th><th>경고</th><th>최고 신뢰도</th><th>박스</th><th>오경보 표시</th>
             </tr>
           </thead>
           <tbody>
@@ -73,9 +77,10 @@ export default function RecordTable({
                       type="button"
                       className="flag"
                       aria-pressed={isFlagged}
+                      title={isFlagged ? "오경보 표시를 취소합니다" : "이 경보가 잘못 울렸다고 서버에 남깁니다"}
                       onClick={(e) => { e.stopPropagation(); onFlag(r.id); }}
                     >
-                      {isFlagged ? "오경보" : "표시"}
+                      {isFlagged ? "오경보" : "오경보로 표시"}
                     </button>
                   </td>
                 </tr>

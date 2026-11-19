@@ -225,3 +225,8 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowra
 @media (max-width: 880px) {
   .livegrid, .demo .livegrid { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* 오경보 표시 설명과 오경보율 보조 글씨 */
+.hint { margin: 0; padding: 10px 14px; font-size: 0.76rem; color: var(--fg-dim); border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.hint b { color: var(--fg); font-weight: 600; }
+.stat .sub-note { margin-top: 2px; font-size: 0.68rem; color: var(--fg-dim); font-family: var(--font-mono); }
