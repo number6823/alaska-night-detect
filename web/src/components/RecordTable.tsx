@@ -50,10 +50,39 @@ export default function RecordTable({
         <h2>감지 기록</h2>
         <Filters value={filter} onChange={(f) => { onFilter(f); setPage(1); }} />
       </header>
-      <p className="hint">
-        경보가 잘못 울렸다면(사람·자전거가 없는데 울림) <b>오경보로 표시</b>하세요. 서버에 저장되어
-        오경보율 계산과 재학습 자료(“이건 사람이 아니다”)로 쓰입니다.
-      </p>
+      <div className="hint">
+        <p>
+          경보가 잘못 울렸다면(사람·자전거가 <b>없는데</b> 울림) <b>오경보로 표시</b>하세요. 서버 DB(SQLite)에 저장되어
+          오경보율 계산에 쓰이고, 자동 삭제되지 않습니다. 사람이 실제로 있는 기록은 표시하지 마세요.
+        </p>
+        <p>
+          {flagged.size > 0 ? (
+            <a className="export" href="/api/export/false-alarms" download>
+              오경보 {flagged.size}건 내보내기 (zip)
+            </a>
+          ) : (
+            <span className="export off">오경보 내보내기 (zip) — 표시한 기록이 없습니다</span>
+          )}{" "}
+          <span className="hint-sub">
+            zip = 박스 없는 원본 사진 + 빈 라벨(사람·자전거 없음) + 목록. 재학습 때 “이건 사람이 아니다”를 가르치는 배경 자료로 추가합니다.
+          </span>
+        </p>
+      </div>
+      <details className="guide">
+        <summary>무엇을 오경보로 표시하나요?</summary>
+        <p className="guide-note">
+          사진의 박스는 <b>모델의 예측</b>이고 정답이 아닙니다. 신뢰도는 오경보 여부가 아니라 의심 후보를 찾는 용도이며,
+          최종 판단은 캡처 사진을 직접 보고 합니다.
+        </p>
+        <table className="guide-table">
+          <tbody>
+            <tr><td><b>오경보로 표시</b></td><td>사람·자전거가 <b>없는데</b> 박스가 있음 (나무, 가로등, 차 불빛, 기둥)</td></tr>
+            <tr><td>표시 안 함</td><td>사람이 있고 박스가 맞음 — 신뢰도가 낮아도 사람이 맞으면 정상 경보입니다</td></tr>
+            <tr><td>표시 안 함</td><td>사람은 있는데 엉뚱한 곳에 박스가 하나 더 있음 — 빈 라벨이 사람을 “없다”고 가르치게 됩니다</td></tr>
+            <tr><td>표시 안 함</td><td>자전거 탄 사람인데 사람만 잡힘 — 오경보가 아니라 <b>미탐</b>이라 다른 방법(라벨링)이 필요합니다</td></tr>
+          </tbody>
+        </table>
+      </details>
       <div className="tablewrap">
         <table>
           <thead>

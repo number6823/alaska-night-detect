@@ -24,11 +24,15 @@ class Spool:
         self.max_items = max_items
         self._seq = 0
 
-    def put(self, jpeg: Optional[bytes], meta: dict) -> Path:
+    def put(
+        self, jpeg: Optional[bytes], meta: dict, raw: Optional[bytes] = None
+    ) -> Path:
         self._seq += 1
         stem = f"{time.time_ns()}_{self._seq:04d}"
         if jpeg:
             (self.dir / f"{stem}.jpg").write_bytes(jpeg)
+        if raw:  # 박스를 그리지 않은 원본 프레임(재학습 자료용). 없는 기록도 그대로 올라간다
+            (self.dir / f"{stem}.raw.jpg").write_bytes(raw)
         path = self.dir / f"{stem}.json"
         path.write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         self._trim()
@@ -47,7 +51,11 @@ class Spool:
 
     @staticmethod
     def _remove(json_path: Path) -> None:
-        for p in (json_path, json_path.with_suffix(".jpg")):
+        for p in (
+            json_path,
+            json_path.with_suffix(".jpg"),
+            json_path.with_name(json_path.stem + ".raw.jpg"),
+        ):
             try:
                 p.unlink()
             except FileNotFoundError:
@@ -66,8 +74,12 @@ class Spool:
                 continue
             jpg = path.with_suffix(".jpg")
             data = jpg.read_bytes() if jpg.exists() else None
+            raw_path = path.with_name(path.stem + ".raw.jpg")
             try:
-                send(data, meta)
+                if raw_path.exists():
+                    send(data, meta, raw_path.read_bytes())
+                else:
+                    send(data, meta)
             except (
                 Exception
             ):  # 서버 문제는 종류가 많다. 어떤 것이든 나중에 다시 시도한다
@@ -105,16 +117,24 @@ class Reporter:
         self._thread = threading.Thread(target=self._worker, daemon=True)
         self._thread.start()
 
-    def submit(self, jpeg: Optional[bytes], meta: dict) -> None:
+    def submit(
+        self, jpeg: Optional[bytes], meta: dict, raw: Optional[bytes] = None
+    ) -> None:
         try:
-            self._q.put_nowait((jpeg, meta))
+            self._q.put_nowait((jpeg, meta, raw))
         except queue.Full:
             self.spool.put(
-                jpeg, meta
+                jpeg, meta, raw
             )  # 서버가 느리면 디스크로 넘겨서 영상 처리를 막지 않는다
             self.dropped_to_spool += 1
 
-    def _send(self, jpeg: Optional[bytes], meta: dict) -> dict:
+    def _send(
+        self, jpeg: Optional[bytes], meta: dict, raw: Optional[bytes] = None
+    ) -> dict:
+        if raw is not None:  # 원본이 있을 때만 넘긴다(원본을 모르는 옛 post 함수도 그대로 동작)
+            return self._post(
+                self.server_url, jpeg, timeout=self.timeout, raw_jpeg=raw, **meta
+            )
         return self._post(self.server_url, jpeg, timeout=self.timeout, **meta)
 
     def _worker(self) -> None:
@@ -128,15 +148,15 @@ class Reporter:
                 continue
             if item is None:
                 return
-            jpeg, meta = item
+            jpeg, meta, raw = item
             try:
-                self._send(jpeg, meta)
+                self._send(jpeg, meta, raw)
                 self.sent += 1
                 if self.spool.count():
                     self.sent += self.spool.flush(self._send, limit=5)
             except Exception:
                 self.failed += 1
-                self.spool.put(jpeg, meta)
+                self.spool.put(jpeg, meta, raw)
 
     def close(self, wait_s: float = 3.0) -> None:
         """남은 기록을 올려 보고, 안 되면 디스크에 남긴 채 끝낸다."""

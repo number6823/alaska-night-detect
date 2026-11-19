@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Detection, Filter, RunnerStatus } from "./types.ts";
-import { fetchDetections, fetchStatus, flagDetection } from "./api.ts";
+import { fetchDetections, fetchHealth, fetchStatus, flagDetection } from "./api.ts";
+import type { StoreInfo } from "./api.ts";
 import StatusBar from "./components/StatusBar.tsx";
 import StatTiles from "./components/StatTiles.tsx";
 import CapturePanel from "./components/CapturePanel.tsx";
@@ -16,6 +17,7 @@ export default function App() {
   const [rows, setRows] = useState<Detection[]>([]);
   const [live, setLive] = useState(false);
   const [status, setStatus] = useState<RunnerStatus | null>(null);
+  const [store, setStore] = useState<StoreInfo | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [flagged, setFlagged] = useState<Set<string>>(() => new Set());
@@ -44,6 +46,7 @@ export default function App() {
         if (!alive) return;
         setRows(rows);
         setLive(live);
+        fetchHealth().then((h) => { if (alive) setStore(h); });
       });
     pollStatus();
     const a = window.setInterval(pollStatus, STATUS_POLL_MS);
@@ -80,7 +83,7 @@ export default function App() {
 
   return (
     <div className={demo ? "wrap demo" : "wrap"}>
-      <StatusBar live={connected} lastAt={rows[0]?.at} />
+      <StatusBar live={connected} lastAt={rows[0]?.at} store={store} />
       <div className="livegrid">
         <LiveView status={status} />
         <RiskBars status={status} />

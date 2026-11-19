@@ -46,3 +46,19 @@ export async function fetchStatus(): Promise<RunnerStatus | null> {
     return null;
   }
 }
+
+// 서버 DB(SQLite)에 저장된 기록 수와, 오경보로 표시해 자동 삭제에서 보호되는 수. 서버가 없으면 null.
+export interface StoreInfo {
+  count: number;
+  flagged: number;
+}
+export async function fetchHealth(): Promise<StoreInfo | null> {
+  try {
+    const res = await fetch("/api/health", { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const d = (await res.json()) as { count?: number; flagged?: number };
+    return { count: d.count ?? 0, flagged: d.flagged ?? 0 };
+  } catch {
+    return null;
+  }
+}
