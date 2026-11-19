@@ -1008,5 +1008,80 @@ class ModelLoadClockTest(unittest.TestCase):
             self.assertEqual(summary["frames"], 30)
 
 
+class RawFrameTest(unittest.TestCase):
+    """박스 없는 원본 프레임(raw)도 기록과 함께 올라가고, 서버가 꺼져 있어도 잃지 않는다."""
+
+    RAW = b"\xff\xd8\xff\xe1raw"
+
+    def wait(self, cond, seconds=3.0):
+        end = time.time() + seconds
+        while time.time() < end:
+            if cond():
+                return True
+            time.sleep(0.02)
+        return False
+
+    def test_spool_keeps_raw_and_cleans_it(self):
+        with tempfile.TemporaryDirectory() as d:
+            sp = Spool(d)
+            sp.put(b"\xff\xd8\xff", {"person": 1}, self.RAW)
+            sp.put(b"\xff\xd8\xff", {"person": 2})  # 원본 없는 기록
+            got = []
+
+            def send(jpeg, meta, raw=None):
+                got.append((meta["person"], raw))
+
+            self.assertEqual(sp.flush(send), 2)
+            self.assertEqual(got, [(1, self.RAW), (2, None)])
+            self.assertEqual(list(Path(d).glob("*")), [])  # 사진·원본·기록 모두 지운다
+
+    def test_old_two_argument_send_still_works_without_raw(self):
+        with tempfile.TemporaryDirectory() as d:
+            sp = Spool(d)
+            sp.put(None, {"person": 1})
+            seen = []
+            self.assertEqual(sp.flush(lambda jpeg, meta: seen.append(meta)), 1)
+            self.assertEqual(seen, [{"person": 1}])
+
+    def test_reporter_passes_raw_only_when_present(self):
+        with tempfile.TemporaryDirectory() as d:
+            calls = []
+
+            def post(url, jpeg, timeout=0, **kw):
+                calls.append(kw)
+                return {}
+
+            rep = Reporter("http://x", Spool(d), post_fn=post, retry_s=0.05)
+            try:
+                rep.submit(b"\xff\xd8\xff", {"person": 1}, self.RAW)
+                rep.submit(b"\xff\xd8\xff", {"person": 2})
+                self.assertTrue(self.wait(lambda: len(calls) == 2))
+            finally:
+                rep.close()
+            self.assertEqual(calls[0]["raw_jpeg"], self.RAW)
+            self.assertNotIn("raw_jpeg", calls[1])
+
+    def test_raw_survives_server_down_then_arrives(self):
+        with tempfile.TemporaryDirectory() as d:
+            up = [False]
+            received = []
+
+            def post(url, jpeg, timeout=0, **kw):
+                if not up[0]:
+                    raise ConnectionError("서버 꺼짐")
+                received.append(kw.get("raw_jpeg"))
+                return {}
+
+            rep = Reporter("http://x", Spool(d), post_fn=post, retry_s=0.05)
+            try:
+                rep.submit(b"\xff\xd8\xff", {"person": 1}, self.RAW)
+                self.assertTrue(self.wait(lambda: rep.spool.count() == 1))
+                up[0] = True
+                self.assertTrue(self.wait(lambda: received == [self.RAW]))
+                self.assertTrue(self.wait(lambda: rep.spool.count() == 0))
+            finally:
+                rep.close()
+
+
 if __name__ == "__main__":
     unittest.main()

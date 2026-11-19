@@ -299,7 +299,8 @@ def run(
                     "dist": LEVEL_DISTANCE_M[res.alarm_level],
                     "at": last_detect_at,
                 }
-                reporter.submit(encode_jpeg(shown), meta)
+                # 박스를 그린 캡처와 함께 박스 없는 원본도 올린다(오경보를 재학습 자료로 내보낼 때 쓴다)
+                reporter.submit(encode_jpeg(shown), meta, encode_jpeg(frame))
                 posts += 1
             if cfg.preview and writer.preview_due():
                 shown = (
