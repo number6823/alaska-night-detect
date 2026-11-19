@@ -918,5 +918,49 @@ class AplayDeviceTest(unittest.TestCase):
             self.assertEqual(aplay_command(), ["aplay", "-q", "-D", "plughw:1,0", "-"])
 
 
+class ModelLoadClockTest(unittest.TestCase):
+    """--realtime 영상은 모델을 다 올린 뒤에 시계가 시작해야 한다(Jetson 은 엔진 로딩에 약 100초)."""
+
+    def test_realtime_clock_starts_after_model_is_loaded(self):
+        from unittest import mock
+
+        clock = FakeClock()
+
+        class SlowDetector:
+            def __init__(self, *args, **kwargs):
+                clock.t += 100.0  # 모델 로딩 100초
+
+            def detect(self, frame):
+                return []
+
+            def describe(self):
+                return "fake"
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.mp4"
+            path.write_bytes(b"x")
+            cap = FakeCap(30, fps=30.0)
+            src = VideoSource(
+                str(path),
+                realtime=True,
+                capture_factory=lambda p: cap,
+                clock=clock,
+                sleep=clock.sleep,
+            )
+            cfg = RunnerConfig(
+                source=str(path), data_dir=str(Path(d) / "data"), mute=True, realtime=True
+            )
+            with mock.patch("runner.detector.Detector", SlowDetector):
+                summary = run(
+                    cfg,
+                    source=src,
+                    post_fn=lambda *a, **k: {},
+                    beeper=Beeper(mute=True),
+                    log=lambda m: None,
+                )
+            self.assertEqual(src.dropped, 0)
+            self.assertEqual(summary["frames"], 30)
+
+
 if __name__ == "__main__":
     unittest.main()
