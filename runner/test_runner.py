@@ -918,5 +918,51 @@ class AplayDeviceTest(unittest.TestCase):
             self.assertEqual(aplay_command(), ["aplay", "-q", "-D", "plughw:1,0", "-"])
 
 
+class RiskBarTest(unittest.TestCase):
+    """웹 화면 막대용: 가장 가까운 박스의 위험율(5.5m선 0 → 2m선 1)과 신뢰도."""
+
+    CAL = Calibration(foot_5_5=0.30, foot_3=0.40, foot_2=0.50, frame_height=1000)
+
+    def box(self, foot, conf=0.9, cls=0):
+        return [100.0, foot * 1000 - 200, 200.0, foot * 1000, conf, cls]
+
+    def test_no_box_is_zero(self):
+        from runner.pipeline import nearest_risk
+
+        self.assertEqual(nearest_risk([], self.CAL), (0.0, 0.0))
+
+    def test_line_positions(self):
+        from runner.pipeline import nearest_risk
+
+        self.assertAlmostEqual(nearest_risk([self.box(0.30)], self.CAL)[0], 0.0)
+        self.assertAlmostEqual(nearest_risk([self.box(0.40)], self.CAL)[0], 0.5)
+        self.assertAlmostEqual(nearest_risk([self.box(0.50)], self.CAL)[0], 1.0)
+
+    def test_clamped_and_cut_foot(self):
+        from runner.pipeline import nearest_risk
+
+        self.assertEqual(nearest_risk([self.box(0.10)], self.CAL)[0], 0.0)
+        self.assertEqual(nearest_risk([self.box(0.80)], self.CAL)[0], 1.0)
+        self.assertEqual(nearest_risk([self.box(1.0)], self.CAL)[0], 1.0)  # 발이 화면 아래에서 잘림
+
+    def test_nearest_box_decides_risk_and_conf(self):
+        from runner.pipeline import nearest_risk
+
+        far = self.box(0.32, conf=0.95)
+        near = self.box(0.45, conf=0.41, cls=1)
+        risk, conf = nearest_risk([far, near], self.CAL)
+        self.assertAlmostEqual(risk, 0.75)
+        self.assertAlmostEqual(conf, 0.41)
+
+    def test_pipeline_result_carries_risk_after_conf_filter(self):
+        pipe = Pipeline(self.CAL, min_conf=0.5)
+        low = self.box(0.48, conf=0.3)  # 신뢰도 기준 미만 → 위험율에 안 들어간다
+        ok = self.box(0.35, conf=0.8)
+        res = pipe.process([low, ok])
+        self.assertAlmostEqual(res.risk, 0.25)
+        self.assertAlmostEqual(res.conf, 0.8)
+        self.assertEqual(pipe.process([]).risk, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

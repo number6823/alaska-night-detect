@@ -27,6 +27,30 @@ class FrameResult:
     bicycle: int
     top: float  # 사람·자전거 박스 중 가장 높은 신뢰도 (없으면 0)
     should_post: bool
+    # 화면에서 가장 가까운 박스 기준(웹 화면의 막대용). 박스가 없으면 0
+    risk: float = 0.0  # 위험율 0~1: 발 위치가 5.5m선이면 0, 2m선이면 1
+    conf: float = 0.0  # 그 박스의 신뢰도 0~1
+
+
+def nearest_risk(boxes: Sequence[Sequence[float]], cal: Calibration):
+    """가장 가까운 박스(발 위치가 가장 아래인 박스)의 (위험율, 신뢰도). 박스가 없으면 (0, 0).
+
+    위험율은 발 위치를 5.5m선(0)에서 2m선(1) 사이로 환산한 값이다. 5.5m선 위쪽은 0, 2m선 아래나
+    발이 화면 아래에서 잘린 박스는 1. 경보 단계(box_level)와 같은 기준선을 쓰되, 단계처럼 끊기지 않고 연속이다.
+    """
+    best = None
+    for b in boxes:
+        foot = b[3] / cal.frame_height
+        if best is None or foot > best[0]:
+            best = (foot, float(b[4]) if len(b) > 4 else 0.0)
+    if best is None:
+        return 0.0, 0.0
+    foot, conf = best
+    if foot >= 1.0 - cal.cut_margin:
+        return 1.0, conf
+    span = cal.foot_2 - cal.foot_5_5
+    risk = (foot - cal.foot_5_5) / span if span > 0 else 0.0
+    return max(0.0, min(1.0, risk)), conf
 
 
 class Pipeline:
@@ -98,7 +122,8 @@ class Pipeline:
         person = sum(1 for b in keep if round(b[5]) == 0)
         bicycle = sum(1 for b in keep if round(b[5]) == 1)
         top = max((float(b[4]) for b in keep), default=0.0)
-        return FrameResult(lvl, alarm, person, bicycle, top, self._decide_post(alarm))
+        risk, conf = nearest_risk(keep, self.cal)
+        return FrameResult(lvl, alarm, person, bicycle, top, self._decide_post(alarm), risk, conf)
 
     def _decide_post(self, alarm: int) -> bool:
         if alarm == 0:
