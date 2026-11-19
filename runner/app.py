@@ -214,10 +214,15 @@ def run(
         f"시작: 입력={cfg.source}, 모델={cfg.model}, 장치={where}, 화면 높이={first.shape[0]}, 서버={cfg.server_url}"
     )
 
-    def status(level, fps=0.0):
+    def status(level, fps=0.0, res=None):
         data = _status(
             state, cfg, frames, started, level, last_detect_at, reporter, spool, fps
         )
+        # 웹 화면의 막대용 연속값(%). 박스가 없거나 아직 처리 전이면 0
+        data["risk"] = round(100 * res.risk) if res else 0
+        data["conf"] = round(100 * res.conf) if res else 0
+        data["person"] = res.person if res else 0
+        data["bicycle"] = res.bicycle if res else 0
         data.update(live.extras())
         data["errors"] = errors
         data["dropped_frames"] = getattr(src, "dropped", 0)  # 처리가 느려서 건너뛴 프레임 수
@@ -312,7 +317,7 @@ def run(
                 writer.write_preview(encode_jpeg(shown, 75))
             if writer.status_due():
                 fps = frames / max(1e-6, time.monotonic() - started)
-                writer.write_status(status(res.alarm_level, fps))
+                writer.write_status(status(res.alarm_level, fps, res))
 
             if cfg.max_frames and frames >= cfg.max_frames:
                 state = "finished"

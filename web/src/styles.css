@@ -196,3 +196,51 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowra
   .cols { grid-template-columns: minmax(0, 1fr); }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* 실시간 화면 + 위험도 막대 */
+.livegrid { display: grid; grid-template-columns: minmax(0, 8fr) minmax(0, 5fr); gap: 18px; align-items: start; }
+.frame.live { aspect-ratio: 16 / 9; }
+.bars-body { padding: 16px 14px 18px; display: flex; flex-direction: column; gap: 22px; }
+.bar { display: flex; flex-direction: column; gap: 8px; }
+.bar-head { display: flex; align-items: baseline; gap: 10px; }
+.bar-label { font-size: 0.95rem; font-weight: 700; }
+.bar-hint { font-size: 0.72rem; color: var(--fg-dim); }
+.bar-val { margin-left: auto; font-family: var(--font-mono); font-size: 1.9rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.bar-val small { font-size: 0.9rem; font-weight: 600; margin-left: 2px; color: var(--fg-dim); }
+.bar-track { height: 30px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.bar-fill { height: 100%; transition: width 0.2s linear, background-color 0.2s linear; }
+@media (prefers-reduced-motion: reduce) { .bar-fill { transition: none; } }
+.level-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px dashed var(--line); padding-top: 14px; }
+.level-name { font-size: 0.8rem; color: var(--fg-dim); }
+.beep-chip { font-family: var(--font-mono); font-size: 1rem; font-weight: 700; border-radius: 999px; padding: 4px 14px; white-space: pre; color: var(--fg-dim); background: var(--panel-2); }
+.beep-chip[data-level="1"] { color: #0e1116; background: var(--level1); }
+.beep-chip[data-level="2"] { color: #0e1116; background: var(--accent); }
+.beep-chip[data-level="3"] { color: #fff; background: var(--danger); }
+
+/* 녹화용(?view=demo): 실시간 화면과 막대를 크게 */
+.demo { max-width: 1440px; }
+.demo .livegrid { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+.demo .bar-val { font-size: 2.6rem; }
+.demo .bar-track { height: 40px; }
+@media (max-width: 880px) {
+  .livegrid, .demo .livegrid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* 오경보 표시 설명과 오경보율 보조 글씨 */
+.hint { margin: 0; padding: 10px 14px; font-size: 0.76rem; color: var(--fg-dim); border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.hint b { color: var(--fg); font-weight: 600; }
+.stat .sub-note { margin-top: 2px; font-size: 0.68rem; color: var(--fg-dim); font-family: var(--font-mono); }
+
+/* 감지 기록 페이지 이동 */
+.pager { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.pg {
+  font: inherit; font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--fg-dim);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  min-width: 30px; padding: 4px 9px; cursor: pointer;
+}
+.pg:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-dim); }
+.pg[aria-current="page"] { color: var(--bg); background: var(--fg); border-color: var(--fg); font-weight: 700; }
+.pg:disabled { opacity: 0.4; cursor: default; }
+.pg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-gap { color: var(--fg-dim); padding: 0 2px; }
+.pg-total { margin-left: auto; font-size: 0.72rem; color: var(--fg-dim); font-family: var(--font-mono); }

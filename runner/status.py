@@ -98,7 +98,7 @@ class StatusWriter:
     def __init__(
         self,
         directory: str,
-        status_interval_s: float = 1.0,
+        status_interval_s: float = 0.25,  # 웹 화면의 막대가 끊기지 않게 자주 쓴다(작은 파일 한 개)
         preview_interval_s: float = 0.2,
         clock=time.monotonic,
     ) -> None:

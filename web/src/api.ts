@@ -1,7 +1,7 @@
 // 서버가 있으면 거기서 읽고, 없으면 예시 기록을 쓴다.
 // Jetson이 POST /api/detections 로 보낸 것을 서버가 모아 두는 구조를 가정한다.
 import { DEMO } from "./demoData.ts";
-import type { Detection } from "./types.ts";
+import type { Detection, RunnerStatus } from "./types.ts";
 
 export interface DetectionsResult {
   rows: Detection[];
@@ -33,5 +33,16 @@ export async function flagDetection(id: string, flagged: boolean): Promise<boole
     return true;
   } catch {
     return false;
+  }
+}
+
+// runner 상태(막대와 미리보기용). server 가 없거나 runner 가 꺼져 있으면 null.
+export async function fetchStatus(): Promise<RunnerStatus | null> {
+  try {
+    const res = await fetch("/api/status", { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    return (await res.json()) as RunnerStatus;
+  } catch {
+    return null;
   }
 }
