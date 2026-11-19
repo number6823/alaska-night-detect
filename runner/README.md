@@ -73,5 +73,18 @@ python -m runner --source <영상> --calibration data/runner/calibration.json
 - `control.json`(server 가 씀): `{"id", "cmd": "test_sound", "level"}` 새 id 만 한 번 실행한다. 시작하기 전에 남아 있던 명령은 실행하지 않는다. 결과는 `status.json` 의 `last_control`(`played` / `muted` / `bad_level`) 로 알린다.
 - `python -m runner` 만 쳐도 `data/runner/config.json` 이 있으면 그 설정으로 시작한다.
 
+## 이벤트 평가 (박스 라벨 없이 "경보가 제때 울렸나")
+영상에서 사람이 읽어 적은 시각(발이 5.5m·3m·2m 선을 넘은 순간)을 정답으로, 경보가 몇 초 빨리/늦게 울렸는지·놓침·빈 구간 오경보를 센다. 감지는 영상마다 한 번만 하고 박스를 저장해 두면, 경보 설정을 바꿔 보는 것은 몇 초 만에 다시 된다.
+```
+python -m runner.events dump --source 영상.mp4 --model data/models/v6_n_640.pt --imgsz 640
+python -m runner.events timeline data/events/영상.v6_n_640.boxes.json --min-conf-bicycle 0.4
+python -m runner.events eval --boxes 1=a.boxes.json 2=b.boxes.json --events 이벤트시각.csv --min-conf-bicycle 0.4
+python -m runner.events eval --boxes ... --events ... --sweep --process-fps 12
+```
+- `timeline`: 경보 단계가 바뀐 시각 목록. 이벤트 CSV 를 적을 때 영상과 맞춰 본다.
+- `eval --sweep`: 신뢰도·자전거 기준·3프레임 중 2번 규칙을 바꿔 한 표로 비교한다. `--process-fps 12` 는 Jetson 처럼 12fps 로 처리했을 때를 흉내 낸다.
+- CSV 모양은 `runner/events.py` 맨 위 설명, 촬영 계획표 4번 참고. 설정을 R5 영상으로 고르고, 새로 찍은 영상은 시험용으로만 쓴다.
+- 박스 정확도(F1·mAP50, `labeler eval`)와는 다른 수치다. 둘 다 발표에 쓴다.
+
 ## 아직 없는 것
 부팅 자동 시작과 준비 완료 소리(3단계), 카메라 번호 자동 선택.
