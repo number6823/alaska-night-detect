@@ -54,6 +54,17 @@ class Detector:
         """실제로 쓰는 장치 설명. 시작할 때 화면에 보여 준다."""
         return self._describe
 
+    def warmup(self) -> None:
+        """더미 프레임으로 한 번 감지해서 모델을 실제로 올려 둔다.
+
+        Ultralytics 는 YOLO(model) 로 열 때가 아니라 **첫 predict 때** TensorRT 엔진(.engine)을 불러온다.
+        Jetson 에서는 그게 수십 초 걸린다. 영상 시계가 돌기 전에 미리 해 두지 않으면 첫 프레임을 처리하는 동안
+        --realtime 영상이 그만큼 흘러가 프레임을 거의 다 건너뛰고 끝난다."""
+        import numpy as np
+
+        size = int(self._kw["imgsz"])
+        self._yolo.predict(np.zeros((size, size, 3), np.uint8), conf=self.min_conf, **self._kw)
+
     def detect(self, frame) -> List[Sequence[float]]:
         r = self._yolo.predict(frame, conf=self.min_conf, **self._kw)[0]
         return r.boxes.data.tolist()
