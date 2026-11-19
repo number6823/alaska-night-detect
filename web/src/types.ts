@@ -38,3 +38,21 @@ export interface DetectionKind {
   label: string;
   color: string;
 }
+
+/**
+ * GET /api/status — runner 가 0.25초마다 쓰는 상태(server 가 그대로 내보낸다).
+ * risk·conf 는 화면에서 가장 가까운 사람·자전거 박스 기준 퍼센트(0~100)이고, 박스가 없으면 0 이다.
+ */
+export interface RunnerStatus {
+  online: boolean;
+  state: string; // running / camera_lost / finished / stopped / stale / off
+  fps?: number;
+  alarm_level?: number;
+  /** 위험율: 발 위치가 5.5m선이면 0, 2m선이면 100 */
+  risk?: number;
+  /** 감지율: 그 박스의 모델 신뢰도 */
+  conf?: number;
+  person?: number;
+  bicycle?: number;
+  device?: string;
+}
