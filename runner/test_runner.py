@@ -1008,5 +1008,80 @@ class ModelLoadClockTest(unittest.TestCase):
             self.assertEqual(summary["frames"], 30)
 
 
+class EngineWarmupClockTest(unittest.TestCase):
+    """TensorRT 엔진은 첫 predict 때 불러와서 오래 걸린다. 그 시간이 영상 시계를 흘려보내면 안 된다."""
+
+    def run_with(self, detector_cls):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "x.mp4"
+            path.write_bytes(b"x")
+            clock = FakeClock()
+            detector_cls.clock = clock
+            cap = FakeCap(30, fps=30.0)
+            src = VideoSource(
+                str(path),
+                realtime=True,
+                capture_factory=lambda p: cap,
+                clock=clock,
+                sleep=clock.sleep,
+            )
+            cfg = RunnerConfig(
+                source=str(path), data_dir=str(Path(d) / "data"), mute=True, realtime=True
+            )
+            with mock.patch("runner.detector.Detector", detector_cls):
+                summary = run(
+                    cfg,
+                    source=src,
+                    post_fn=lambda *a, **k: {},
+                    beeper=Beeper(mute=True),
+                    log=lambda m: None,
+                )
+            return src, summary
+
+    def test_warmup_runs_before_the_video_clock_starts(self):
+        class LazyEngine:
+            clock = None
+            loaded = False
+
+            def __init__(self, *args, **kwargs):
+                pass  # 만들 때는 바로 끝난다(엔진은 아직 안 불러옴)
+
+            def warmup(self):
+                type(self).clock.t += 100.0  # 첫 predict 에서 엔진을 불러오는 데 100초
+                type(self).loaded = True
+
+            def detect(self, frame):
+                return []
+
+            def describe(self):
+                return "fake"
+
+        src, summary = self.run_with(LazyEngine)
+        self.assertTrue(LazyEngine.loaded)
+        self.assertEqual(src.dropped, 0)
+        self.assertEqual(summary["frames"], 30)
+
+    def test_warmup_failure_does_not_stop_the_run(self):
+        class BadWarmup:
+            clock = None
+
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def warmup(self):
+                raise RuntimeError("더미 프레임이 안 맞는 모델")
+
+            def detect(self, frame):
+                return []
+
+            def describe(self):
+                return "fake"
+
+        src, summary = self.run_with(BadWarmup)
+        self.assertEqual(summary["frames"], 30)
+
+
 if __name__ == "__main__":
     unittest.main()
