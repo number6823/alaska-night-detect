@@ -13,7 +13,9 @@ import uuid
 from typing import Optional
 
 
-def _multipart(fields: dict, image: Optional[bytes], boundary: str) -> bytes:
+def _multipart(
+    fields: dict, image: Optional[bytes], boundary: str, raw: Optional[bytes] = None
+) -> bytes:
     parts = []
     for key, value in fields.items():
         parts.append(
@@ -29,6 +31,14 @@ def _multipart(fields: dict, image: Optional[bytes], boundary: str) -> bytes:
             ).encode("utf-8")
         )
         parts.append(image + b"\r\n")
+    if raw is not None:  # 박스를 그리지 않은 원본 프레임(재학습 자료용)
+        parts.append(
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="raw"; filename="raw.jpg"\r\n'
+                "Content-Type: image/jpeg\r\n\r\n"
+            ).encode("utf-8")
+        )
+        parts.append(raw + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode("utf-8"))
     return b"".join(parts)
 
@@ -44,6 +54,7 @@ def post_detection(
     dist: float = 0.0,
     at: Optional[str] = None,
     timeout: float = 3.0,
+    raw_jpeg: Optional[bytes] = None,
 ) -> dict:
     """캡처(JPEG 바이트)와 감지 정보를 올리고, 서버가 만든 기록(dict)을 돌려준다."""
     fields = {
@@ -57,7 +68,7 @@ def post_detection(
     if at:
         fields["at"] = at
     boundary = uuid.uuid4().hex
-    body = _multipart(fields, image_jpeg, boundary)
+    body = _multipart(fields, image_jpeg, boundary, raw_jpeg)
     req = urllib.request.Request(
         base_url.rstrip("/") + "/api/detections",
         data=body,
