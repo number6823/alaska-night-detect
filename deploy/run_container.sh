@@ -6,6 +6,8 @@
 #   REPO   이 레포를 받아 둔 폴더(컨테이너 안 /workspace 로 연결된다)
 #   SOUND  스피커 장치를 컨테이너에 연결할지(기본 1). 소리가 안 나면 호스트의 `aplay -l` 로 장치를 확인한다
 #   ALASKA_AUDIO_DEVICE  소리를 낼 ALSA 장치(예: plughw:1,0). 비우면 기본 장치. HDMI·보드 오디오는 기본이 아닐 수 있다
+#   NAME   컨테이너 이름(기본 alaska_auto). 같은 이름이 있으면 지우고 새로 만든다
+#   IMGSZ  감지 입력 크기(예: 480, 640). TensorRT 엔진을 만든 크기와 같게 준다. 비우면 runner 기본값(640)
 #   CAMERA 카메라 장치(기본 /dev/video0). 장치가 없으면 연결하지 않는다. 그때는 SOURCE=<영상 파일> 로 시험한다
 #
 # 주의: 이 스크립트는 Jetson 에서 아직 시험하지 못했다. 이미지의 파이썬 버전, GPU 실행 옵션(--runtime nvidia),
@@ -13,7 +15,7 @@
 set -eu
 : "${IMAGE:?IMAGE 에 컨테이너 이미지 이름을 준다}"
 : "${REPO:?REPO 에 레포 경로를 준다}"
-NAME="${NAME:-alaska}"
+NAME="${NAME:-alaska_auto}"   # 같은 이름의 컨테이너는 지우고 새로 만든다. 작업용 컨테이너 이름(alaska 등)과 겹치지 않게 기본값을 따로 둔다
 SOUND="${SOUND:-1}"
 
 AUDIO_ARGS=()
@@ -35,7 +37,7 @@ docker run -d --name "$NAME" \
   -v "$REPO":/workspace \
   -w /workspace \
   -e PYTHON="${PYTHON:-python3}" -e SOURCE="${SOURCE:-0}" -e MODEL="${MODEL:-yolo11n.pt}" -e ALASKA_TOKEN="${ALASKA_TOKEN:-}" \
-  -e ALASKA_AUDIO_DEVICE="${ALASKA_AUDIO_DEVICE:-}" \
+  -e ALASKA_AUDIO_DEVICE="${ALASKA_AUDIO_DEVICE:-}" -e IMGSZ="${IMGSZ:-}" \
   "$IMAGE" \
   bash deploy/start_all.sh
 echo "시작했다. 로그: docker logs -f $NAME   (runner 로그 파일: $REPO/data/runner/runner.log)"
