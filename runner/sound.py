@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import queue
 import shutil
 import struct
@@ -95,6 +96,19 @@ def pattern_duration_s(level: int) -> float:
     return p["beeps"] * p["beep_s"] + (p["beeps"] - 1) * p["gap_s"]
 
 
+def aplay_command() -> List[str]:
+    """aplay 명령. 환경변수 ALASKA_AUDIO_DEVICE 가 있으면 그 장치로 낸다(`aplay -L` 로 이름을 확인).
+
+    Jetson 의 HDMI·보드 오디오는 기본 장치가 스피커가 아닐 수 있다. 22050Hz 모노를 바로 받지 않는 장치가 많아
+    `plughw:<카드>,<장치>` 처럼 plughw 로 주면 알아서 바꿔 준다.
+    """
+    cmd = ["aplay", "-q"]
+    device = os.environ.get("ALASKA_AUDIO_DEVICE", "").strip()
+    if device:
+        cmd += ["-D", device]
+    return cmd + ["-"]
+
+
 def play_wav(data: bytes) -> bool:
     """WAV 를 재생하고(끝날 때까지 기다림) 성공 여부를 돌려준다."""
     if sys.platform.startswith("win"):
@@ -107,7 +121,7 @@ def play_wav(data: bytes) -> bool:
             return False
     if shutil.which("aplay"):
         try:
-            subprocess.run(["aplay", "-q", "-"], input=data, check=True, timeout=10)
+            subprocess.run(aplay_command(), input=data, check=True, timeout=10)
             return True
         except Exception:
             return False

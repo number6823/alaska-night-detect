@@ -10,6 +10,8 @@
 #     HOST=0.0.0.0                    server 가 열리는 주소. 같은 와이파이의 폰이 보려면 0.0.0.0 (로그인이 없으니 신뢰하는 네트워크에서만)
 #     PORT=8000
 #     RUNNER_DIR=data/runner          runner 와 server 가 주고받는 폴더
+#     CALIBRATION=<RUNNER_DIR>/calibration.json   실측 거리 기준값 파일(있으면 runner 에 --calibration 으로 넘긴다)
+#     ALASKA_AUDIO_DEVICE=            소리 낼 ALSA 장치(예: plughw:1,0). 비우면 기본 장치
 #     ALASKA_TOKEN=                   정하면 설정을 바꾸는 요청에 X-Token 이 필요하다
 set -u
 
@@ -26,6 +28,16 @@ if [ -f "$RUNNER_DIR/config.json" ]; then
   RUNNER_ARGS=(--data-dir "$RUNNER_DIR")
 else
   RUNNER_ARGS=(--data-dir "$RUNNER_DIR" --source "$SOURCE" --model "$MODEL")
+fi
+
+# 실측 거리 기준값(calibration.json)이 있으면 runner 에 넘긴다. 안 넘기면 높이 70cm·기울기 15° 로 계산한 추정치를 쓴다.
+# 설정 화면이 저장한 config.json 에 calibration 파일이 이미 적혀 있으면 그 값을 따른다.
+CAL="${CALIBRATION:-$RUNNER_DIR/calibration.json}"
+if [ -f "$CAL" ] && ! { [ -f "$RUNNER_DIR/config.json" ] && grep -Eq '"calibration"[[:space:]]*:[[:space:]]*"' "$RUNNER_DIR/config.json"; }; then
+  RUNNER_ARGS+=(--calibration "$CAL")
+  echo "거리 기준값: $CAL"
+else
+  echo "거리 기준값 파일이 없거나 설정 파일에 이미 있다 → 설정/추정치를 쓴다"
 fi
 
 supervise() {  # 이름, 명령... : 죽으면 3초 뒤에 다시 켠다. 너무 빨리 계속 죽으면 간격을 늘린다(헛돌지 않게)

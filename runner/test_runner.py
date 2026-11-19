@@ -895,5 +895,28 @@ class PerClassConfTest(unittest.TestCase):
         self.assertEqual((cfg.min_conf_bicycle, cfg.imgsz), (0.35, 640))
 
 
+class AplayDeviceTest(unittest.TestCase):
+    """HDMI·보드 오디오처럼 기본 장치가 스피커가 아닐 때 ALASKA_AUDIO_DEVICE 로 장치를 고른다."""
+
+    def test_default_has_no_device_option(self):
+        import os
+        from unittest import mock
+
+        from runner.sound import aplay_command
+
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ALASKA_AUDIO_DEVICE", None)
+            self.assertEqual(aplay_command(), ["aplay", "-q", "-"])
+
+    def test_env_device_is_passed_to_aplay(self):
+        import os
+        from unittest import mock
+
+        from runner.sound import aplay_command
+
+        with mock.patch.dict(os.environ, {"ALASKA_AUDIO_DEVICE": " plughw:1,0 "}):
+            self.assertEqual(aplay_command(), ["aplay", "-q", "-D", "plughw:1,0", "-"])
+
+
 if __name__ == "__main__":
     unittest.main()
