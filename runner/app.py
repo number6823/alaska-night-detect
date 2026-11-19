@@ -170,10 +170,9 @@ def run(
     src = source or VideoSource(cfg.source, realtime=cfg.realtime)
     if not src.opened:
         raise RuntimeError(f"입력을 열지 못했다: {cfg.source}")
-    first = src.read()
-    if first is None:
-        raise RuntimeError(f"입력에서 프레임을 읽지 못했다: {cfg.source}")
-    cal = make_calibration(cfg, first.shape[0])
+    # 모델은 첫 프레임을 읽기 전에 만든다. --realtime 영상 파일의 시계는 첫 프레임을 읽을 때 시작하는데,
+    # Jetson 에서 TensorRT 엔진을 올리는 데 약 100초가 걸려서 그 뒤에 만들면 영상 시계가 먼저 흘러가
+    # 프레임을 천 개 넘게 건너뛰고 끝나 버린다.
     if detector is None:
         from .detector import Detector
 
@@ -182,6 +181,10 @@ def run(
             cfg.min_conf_bicycle if cfg.min_conf_bicycle is not None else cfg.min_conf,
         )
         detector = Detector(cfg.model, floor, cfg.device, cfg.imgsz)
+    first = src.read()
+    if first is None:
+        raise RuntimeError(f"입력에서 프레임을 읽지 못했다: {cfg.source}")
+    cal = make_calibration(cfg, first.shape[0])
     pipe = Pipeline(cal, cfg.min_conf, cfg.window, cfg.need, cfg.post_interval_s)
     pipe.min_conf_bicycle = cfg.min_conf_bicycle
     own_beeper = beeper is None

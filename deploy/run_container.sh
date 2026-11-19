@@ -6,6 +6,7 @@
 #   REPO   이 레포를 받아 둔 폴더(컨테이너 안 /workspace 로 연결된다)
 #   SOUND  스피커 장치를 컨테이너에 연결할지(기본 1). 소리가 안 나면 호스트의 `aplay -l` 로 장치를 확인한다
 #   ALASKA_AUDIO_DEVICE  소리를 낼 ALSA 장치(예: plughw:1,0). 비우면 기본 장치. HDMI·보드 오디오는 기본이 아닐 수 있다
+#   PULSE_SERVER  본체 PulseAudio 주소(예: tcp:172.17.0.1:4713). 블루투스 스피커 소리를 컨테이너에서 본체로 보낼 때 준다. 비우면 안 넘긴다
 #   NAME   컨테이너 이름(기본 alaska_auto). 같은 이름이 있으면 지우고 새로 만든다
 #   IMGSZ  감지 입력 크기(예: 480, 640). TensorRT 엔진을 만든 크기와 같게 준다. 비우면 runner 기본값(640)
 #   CAMERA 카메라 장치(기본 /dev/video0). 장치가 없으면 연결하지 않는다. 그때는 SOURCE=<영상 파일> 로 시험한다
@@ -37,7 +38,7 @@ docker run -d --name "$NAME" \
   -v "$REPO":/workspace \
   -w /workspace \
   -e PYTHON="${PYTHON:-python3}" -e SOURCE="${SOURCE:-0}" -e MODEL="${MODEL:-yolo11n.pt}" -e ALASKA_TOKEN="${ALASKA_TOKEN:-}" \
-  -e ALASKA_AUDIO_DEVICE="${ALASKA_AUDIO_DEVICE:-}" -e IMGSZ="${IMGSZ:-}" \
+  -e ALASKA_AUDIO_DEVICE="${ALASKA_AUDIO_DEVICE:-}" -e IMGSZ="${IMGSZ:-}" -e PULSE_SERVER="${PULSE_SERVER:-}" \
   "$IMAGE" \
   bash deploy/start_all.sh
 echo "시작했다. 로그: docker logs -f $NAME   (runner 로그 파일: $REPO/data/runner/runner.log)"
