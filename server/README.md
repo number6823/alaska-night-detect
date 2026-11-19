@@ -75,3 +75,16 @@ python -m unittest server.test_app -v      # 14개
 - `deploy/start_all.sh`: server 와 runner 를 같이 켜고, 하나가 죽으면 그것만 다시 켠다(너무 빨리 계속 죽으면 간격을 늘린다). PC 에서 두 프로그램이 같이 도는 것은 확인했다.
 - `deploy/run_container.sh`: Jetson 에서 컨테이너를 `--restart unless-stopped` 로 만들어 `start_all.sh` 를 실행한다. 전원을 켜면 Docker 가 컨테이너를 다시 켠다. **Jetson 에서는 아직 시험하지 못했다**(이미지, GPU 옵션, 오디오·카메라 장치 이름은 장치마다 다르다).
 - 설정 화면이 저장한 `data/runner/config.json` 이 있으면 입력과 모델은 그 값으로 시작한다.
+
+## 오경보 기록 → 재학습 자료 (DB·내보내기)
+- **DB**: 기록은 이 기기 안의 SQLite 파일(`data/server/detections.db`, `detections` 표)에 저장된다. 별도 DB 서버도 인터넷도 필요 없다. 오경보 표시는 `false_alarm` 열이다.
+- **원본 프레임**: runner가 기록을 올릴 때 박스·거리선을 그린 캡처(`image`)와 함께 박스 없는 원본(`raw`)도 올린다. 원본은 `data/server/shots/RAW-<번호>.jpg`로 저장되고 열람 API는 없다(내보내기에만 쓴다). 원본 없이 올리는 예전 방식도 그대로 받는다.
+- **자동 삭제**: 표시 안 한 기록이 `--max-records`(기본 1000)를 넘으면 오래된 것부터 캡처·원본 파일과 함께 지운다. **오경보로 표시한 기록은 지우지 않는다**(표시를 취소하면 다시 대상이 된다).
+- **내보내기**: `GET /api/export/false-alarms` → `false_alarms.zip`
+  - `images/CAP-<번호>.jpg` 박스 없는 원본 프레임(원본이 없으면 박스가 그려진 캡처)
+  - `labels/CAP-<번호>.txt` **빈 파일** = YOLO에서 "이 사진에는 사람도 자전거도 없다"(배경 사진). 따로 라벨링할 필요가 없다.
+  - `manifest.csv` id, 시각, 경고 단계, 박스 수, 신뢰도, 거리, 사진 종류(`raw` 원본 / `shot` 캡처 / `none`)
+  - 표시한 기록이 없으면 404. 학습(재학습)은 사람이 직접 돌린다(자동 재학습이 아니다).
+- **주의**: 사람이 실제로 있는데 박스만 틀린 기록을 오경보로 표시하면 빈 라벨이 틀린 정답이 된다. "사람·자전거가 없는데 울린" 기록만 표시한다.
+- **개인정보**: 원본 프레임에는 얼굴이 찍힐 수 있다. 팀 안에서만 쓰고, Roboflow 같은 외부 사이트에 올리기 전에는 `python -m training.blur_for_upload`로 모자이크한다. `data/`는 git에 올리지 않는다.
+- `GET /api/health`는 `{"ok", "count"(저장된 기록 수), "flagged"(오경보로 표시해 보호되는 수)}`를 돌려준다.

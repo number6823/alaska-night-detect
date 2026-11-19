@@ -50,10 +50,24 @@ export default function RecordTable({
         <h2>감지 기록</h2>
         <Filters value={filter} onChange={(f) => { onFilter(f); setPage(1); }} />
       </header>
-      <p className="hint">
-        경보가 잘못 울렸다면(사람·자전거가 없는데 울림) <b>오경보로 표시</b>하세요. 서버에 저장되어
-        오경보율 계산과 재학습 자료(“이건 사람이 아니다”)로 쓰입니다.
-      </p>
+      <div className="hint">
+        <p>
+          경보가 잘못 울렸다면(사람·자전거가 <b>없는데</b> 울림) <b>오경보로 표시</b>하세요. 서버 DB(SQLite)에 저장되어
+          오경보율 계산에 쓰이고, 자동 삭제되지 않습니다. 사람이 실제로 있는 기록은 표시하지 마세요.
+        </p>
+        <p>
+          {flagged.size > 0 ? (
+            <a className="export" href="/api/export/false-alarms" download>
+              오경보 {flagged.size}건 내보내기 (zip)
+            </a>
+          ) : (
+            <span className="export off">오경보 내보내기 (zip) — 표시한 기록이 없습니다</span>
+          )}{" "}
+          <span className="hint-sub">
+            zip = 박스 없는 원본 사진 + 빈 라벨(사람·자전거 없음) + 목록. 재학습 때 “이건 사람이 아니다”를 가르치는 배경 자료로 추가합니다.
+          </span>
+        </p>
+      </div>
       <div className="tablewrap">
         <table>
           <thead>

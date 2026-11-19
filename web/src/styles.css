@@ -244,3 +244,17 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowra
 .pg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pg-gap { color: var(--fg-dim); padding: 0 2px; }
 .pg-total { margin-left: auto; font-size: 0.72rem; color: var(--fg-dim); font-family: var(--font-mono); }
+
+/* 기록 저장 상태 표시와 오경보 내보내기 */
+.store { font-size: 0.74rem; color: var(--fg-dim); font-family: var(--font-mono); }
+.store b { color: var(--fg); font-weight: 700; }
+.hint p { margin: 0; }
+.hint p + p { margin-top: 6px; }
+.hint-sub { color: var(--fg-dim); }
+.export {
+  display: inline-block; font-size: 0.74rem; font-weight: 600; color: var(--bg); background: var(--fg);
+  border-radius: 6px; padding: 3px 10px; text-decoration: none;
+}
+.export:hover { opacity: 0.85; }
+.export:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.export.off { background: none; color: var(--fg-dim); border: 1px dashed var(--line); font-weight: 400; }
