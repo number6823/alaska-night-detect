@@ -88,3 +88,5 @@ python -m unittest server.test_app -v      # 14개
 - **주의**: 사람이 실제로 있는데 박스만 틀린 기록을 오경보로 표시하면 빈 라벨이 틀린 정답이 된다. "사람·자전거가 없는데 울린" 기록만 표시한다.
 - **개인정보**: 원본 프레임에는 얼굴이 찍힐 수 있다. 팀 안에서만 쓰고, Roboflow 같은 외부 사이트에 올리기 전에는 `python -m training.blur_for_upload`로 모자이크한다. `data/`는 git에 올리지 않는다.
 - `GET /api/health`는 `{"ok", "count"(저장된 기록 수), "flagged"(오경보로 표시해 보호되는 수)}`를 돌려준다.
+
+- 오경보 표시 → 재학습까지의 전체 절차와 판단 기준은 `docs/false-alarm-retraining.md`를 본다.

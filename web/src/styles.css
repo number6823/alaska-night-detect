@@ -258,3 +258,13 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowra
 .export:hover { opacity: 0.85; }
 .export:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .export.off { background: none; color: var(--fg-dim); border: 1px dashed var(--line); font-weight: 400; }
+
+/* 오경보 판단 가이드 */
+.guide { padding: 8px 14px 12px; border-bottom: 1px solid var(--line); font-size: 0.76rem; }
+.guide summary { cursor: pointer; font-weight: 600; color: var(--accent); width: fit-content; }
+.guide summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guide-note { margin: 8px 0; color: var(--fg-dim); }
+.guide-note b, .guide-table b { color: var(--fg); font-weight: 600; }
+.guide-table { width: 100%; font-size: 0.74rem; }
+.guide-table td { white-space: normal; padding: 5px 8px; vertical-align: top; border-bottom: 1px solid var(--line); }
+.guide-table td:first-child { white-space: nowrap; color: var(--fg-dim); width: 1%; }
