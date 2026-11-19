@@ -181,6 +181,11 @@ def run(
             cfg.min_conf_bicycle if cfg.min_conf_bicycle is not None else cfg.min_conf,
         )
         detector = Detector(cfg.model, floor, cfg.device, cfg.imgsz)
+        log("모델을 올리는 중이다(Jetson 의 TensorRT 엔진은 첫 감지 때 실제로 불러와서 수십 초 걸린다)")
+        try:
+            detector.warmup()  # 영상 시계가 시작되기 전에 모델을 실제로 올려 둔다
+        except Exception as exc:  # 더미 프레임 때문에 시작이 막히지 않게 한다. 진짜 오류는 감지 루프에서 다시 드러난다
+            log(f"워밍업 실패(계속한다): {type(exc).__name__}: {exc}")
     first = src.read()
     if first is None:
         raise RuntimeError(f"입력에서 프레임을 읽지 못했다: {cfg.source}")
