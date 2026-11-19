@@ -230,3 +230,17 @@ td { padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowra
 .hint { margin: 0; padding: 10px 14px; font-size: 0.76rem; color: var(--fg-dim); border-bottom: 1px solid var(--line); background: var(--panel-2); }
 .hint b { color: var(--fg); font-weight: 600; }
 .stat .sub-note { margin-top: 2px; font-size: 0.68rem; color: var(--fg-dim); font-family: var(--font-mono); }
+
+/* 감지 기록 페이지 이동 */
+.pager { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.pg {
+  font: inherit; font-size: 0.75rem; font-variant-numeric: tabular-nums; color: var(--fg-dim);
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+  min-width: 30px; padding: 4px 9px; cursor: pointer;
+}
+.pg:hover:not(:disabled) { color: var(--fg); border-color: var(--fg-dim); }
+.pg[aria-current="page"] { color: var(--bg); background: var(--fg); border-color: var(--fg); font-weight: 700; }
+.pg:disabled { opacity: 0.4; cursor: default; }
+.pg:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pg-gap { color: var(--fg-dim); padding: 0 2px; }
+.pg-total { margin-left: auto; font-size: 0.72rem; color: var(--fg-dim); font-family: var(--font-mono); }
