@@ -114,16 +114,31 @@ docker logs -f alaska_auto
 
 ## 모델 교체
 
+**한 줄로 교체** (Jetson 본체에서, 새 `.pt`는 어디에 있어도 된다):
+```bash
+REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt            # 입력 크기 기본 640
+REPO=~/alaska-night-detect IMGSZ=480 bash deploy/swap_model.sh ~/best_v13.pt  # 480 엔진으로(fps는 오르지만 자전거 정확도가 떨어진다)
+REPO=~/alaska-night-detect bash deploy/swap_model.sh --rollback               # 직전 설정으로 되돌리기
+DRY_RUN=1 REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt  # 아무것도 바꾸지 않고 할 일만 출력
+```
+스크립트가 하는 일: ① 컨테이너를 멈춘다(Jetson Nano는 메모리가 모자라 runner가 켜져 있으면 변환이 실패할 수 있다) → ② 클래스 순서(`person=0`, `bicycle=1`)를 확인하고 엔진을 변환한다(**10~15분**, 걸린 시간을 출력) → ③ `config.json`을 `config.json.bak_<시각>`으로 백업하고 `model`과 `imgsz`만 바꾼다 → ④ 컨테이너를 다시 켜고 `/api/status`가 `running`이 될 때까지 기다린다(최대 240초, `WAIT_S`로 바꾼다). **준비가 안 되거나 변환이 실패하면 이전 설정으로 자동으로 되돌린다.** 클래스 순서가 다르면 아무것도 바꾸지 않고 중단한다. 화면, 소리, 거리 기준값은 모델과 상관없이 그대로다.
+
+- 새 `.pt`는 `models/<이름>_<imgsz>.pt`로 복사되고 엔진은 `models/<이름>_<imgsz>.engine`으로 생긴다. 이전 엔진 파일은 지우지 않으므로 `--rollback`이 된다.
+- 교체한 뒤 확인: 소리("준비 완료"), 노트북 브라우저에서 `http://<Jetson 주소>:8000`, 위험율 막대가 움직이는지.
+- **이 스크립트는 PC에서 가짜 docker로 흐름(정상·자동 되돌리기·클래스 순서 오류·엔진 없음)만 시험했다. Jetson 실기기에서는 아직 실행해 보지 않았다.** 처음에는 `DRY_RUN=1`로 단계를 확인한다.
+
+**손으로 하려면**
 1. `.pt`를 Jetson에서 TensorRT로 변환한다(입력 크기는 쓸 크기와 같게).
    ```bash
    yolo export model=models/final.pt format=engine half=True imgsz=480 workspace=2 device=0
    ```
-   변환 시간이 걸리므로 시간을 적어 둔다(10~15분 정도 보고됨).
 2. `config.json`의 `"model"`을 새 엔진 경로(`/workspace/models/final.engine`)로 바꾼다. `imgsz`는 엔진을 만든 크기와 같아야 한다.
 3. `docker restart alaska_auto`.
-4. 이상하면 `model`을 이전 엔진 경로로 되돌리고 다시 `docker restart alaska_auto`. 화면, 소리, 거리 기준값은 모델과 상관없이 그대로다.
+4. 이상하면 `model`을 이전 엔진 경로로 되돌리고 다시 `docker restart alaska_auto`.
 
 클래스 순서는 `person=0`, `bicycle=1`이어야 한다. 학습한 모델이 이 순서인지 변환 전에 확인한다.
+
+> **입력 크기는 640으로 정했다(2026-11-20).** v12를 같은 정답용 103장으로 평가했더니 480은 자전거 놓침률 0.29→0.50, 자전거 F1 64.9%→49.3%, mAP50 0.812→0.714로 나빠졌다(경보 이벤트 19/19와 빈 구간 오경보는 비슷). 발표 숫자는 모두 640 기준이다. `config.json`의 `imgsz`와 엔진 변환 크기를 둘 다 640으로 맞춘다.
 
 ## 속도와 전원 (Jetson Nano 5W, micro-USB, 측정 보고)
 
