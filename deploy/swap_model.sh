@@ -3,15 +3,15 @@
 # 준비가 안 되거나 변환이 실패하면 이전 설정으로 자동으로 되돌린다. 화면·소리·거리 기준값은 모델과 상관없이 그대로다.
 #
 # 사용 (Jetson 본체에서, 레포 맨 위 폴더가 아니어도 된다):
-#   REPO=~/alaska-night-detect bash deploy/swap_model.sh best_v13.pt            # 새 모델로 교체(입력 크기 기본 640)
-#   REPO=~/alaska-night-detect IMGSZ=480 bash deploy/swap_model.sh best_v13.pt  # 480 엔진으로(빠르지만 자전거 정확도가 많이 떨어진다)
+#   REPO=~/alaska-night-detect bash deploy/swap_model.sh best_v13.pt            # 새 모델로 교체(입력 크기 기본 480)
+#   REPO=~/alaska-night-detect IMGSZ=640 bash deploy/swap_model.sh best_v13.pt  # 640 엔진으로(정확하지만 Jetson Nano 에서는 느리다. 평가·시험용)
 #   REPO=~/alaska-night-detect bash deploy/swap_model.sh --rollback             # 직전 설정으로 되돌리기
 #   DRY_RUN=1 ... bash deploy/swap_model.sh best_v13.pt                          # 아무것도 바꾸지 않고 할 일만 출력
 #
 # 환경변수(없으면 기본값):
 #   REPO     이 레포를 받아 둔 폴더(컨테이너 안 /workspace 로 연결된 폴더). 필수
 #   NAME     컨테이너 이름(기본 alaska_auto)
-#   IMGSZ    엔진 입력 크기(기본 640). config.json 의 imgsz 도 같이 맞춘다. 정확도를 640 기준으로 평가했고 480 은 자전거 놓침률이 0.29→0.50 으로 나빠진다
+#   IMGSZ    엔진 입력 크기(기본 480). config.json 의 imgsz 도 같이 맞춘다. Jetson Nano 가 구형·소형이라 480 으로 맞춘다(2026-11-20). v12 는 640 평가보다 480 에서 자전거 놓침률이 0.29→0.50 으로 나빠진다
 #   WAIT_S   준비 완료를 기다리는 최대 시간(초, 기본 240). 엔진 로딩에 수십 초가 걸린다
 #   PORT     server 포트(기본 8000)
 #   DRY_RUN  1 이면 실제로 하지 않고 단계만 보여 준다
@@ -25,7 +25,7 @@ set -u
 
 REPO="${REPO:-}"
 NAME="${NAME:-alaska_auto}"
-IMGSZ="${IMGSZ:-640}"
+IMGSZ="${IMGSZ:-480}"
 WAIT_S="${WAIT_S:-240}"
 PORT="${PORT:-8000}"
 DRY_RUN="${DRY_RUN:-0}"

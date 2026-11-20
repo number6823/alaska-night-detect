@@ -61,7 +61,7 @@ docker logs -f alaska_auto
 | `SOUND` | `1` | `1`이고 `/dev/snd`가 있으면 소리 장치를 컨테이너에 연결 |
 | `ALASKA_AUDIO_DEVICE` | (비움) | 소리를 낼 ALSA 장치. 블루투스를 PulseAudio로 보낼 때는 `pulse`. 비우면 기본 장치 |
 | `PULSE_SERVER` | (비움) | 본체 PulseAudio 주소(예: `tcp:172.17.0.1:4713`). 컨테이너 소리를 본체로 보낼 때 |
-| `IMGSZ` | (비움 = 640) | 감지 입력 크기. TensorRT 엔진을 만든 크기와 같게(480/640) |
+| `IMGSZ` | (비움 = 480) | 감지 입력 크기. TensorRT 엔진을 만든 크기와 같게(480/640) |
 | `CAMERA` | `/dev/video0` | 카메라 장치. **없으면 연결하지 않는다**(없는 장치를 주면 컨테이너가 안 만들어진다) |
 | `SOURCE` | `0` | runner 입력(카메라 번호, 영상 파일, `rtsp://` 주소). `config.json`이 있으면 그 값이 우선 |
 | `MODEL` | `yolo11n.pt` | 감지 모델(`.pt` 또는 `.engine`). `config.json`이 있으면 그 값이 우선 |
@@ -116,8 +116,8 @@ docker logs -f alaska_auto
 
 **한 줄로 교체** (Jetson 본체에서, 새 `.pt`는 어디에 있어도 된다):
 ```bash
-REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt            # 입력 크기 기본 640
-REPO=~/alaska-night-detect IMGSZ=480 bash deploy/swap_model.sh ~/best_v13.pt  # 480 엔진으로(fps는 오르지만 자전거 정확도가 떨어진다)
+REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt            # 입력 크기 기본 480
+REPO=~/alaska-night-detect IMGSZ=640 bash deploy/swap_model.sh ~/best_v13.pt  # 640 엔진으로(정확하지만 Nano에서는 느리다. 평가·시험용)
 REPO=~/alaska-night-detect bash deploy/swap_model.sh --rollback               # 직전 설정으로 되돌리기
 DRY_RUN=1 REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt  # 아무것도 바꾸지 않고 할 일만 출력
 ```
@@ -138,7 +138,9 @@ DRY_RUN=1 REPO=~/alaska-night-detect bash deploy/swap_model.sh ~/best_v13.pt  # 
 
 클래스 순서는 `person=0`, `bicycle=1`이어야 한다. 학습한 모델이 이 순서인지 변환 전에 확인한다.
 
-> **입력 크기는 640으로 정했다(2026-11-20).** v12를 같은 정답용 103장으로 평가했더니 480은 자전거 놓침률 0.29→0.50, 자전거 F1 64.9%→49.3%, mAP50 0.812→0.714로 나빠졌다(경보 이벤트 19/19와 빈 구간 오경보는 비슷). 발표 숫자는 모두 640 기준이다. `config.json`의 `imgsz`와 엔진 변환 크기를 둘 다 640으로 맞춘다.
+> **입력 크기는 480으로 맞춘다(2026-11-20).** Jetson Nano가 구형·소형이라 640을 쓸 수 없다. `config.json`의 `imgsz`와 엔진 변환 크기를 둘 다 480으로 맞춘다(기본값도 480).
+>
+> **정확도 주의**: v12를 같은 정답용 103장으로 평가했을 때 640 대비 480은 자전거 놓침률 0.29→0.50, 자전거 F1 64.9%→49.3%, mAP50 0.812→0.714로 나빠졌다(경보 이벤트 19/19와 빈 구간 오경보는 비슷). 지금까지 정리한 발표 숫자는 **640 평가 기준**이다. Jetson 시연은 480으로 돌아가므로 발표에서는 둘을 구분해 말한다. v13(재학습)도 480 기준으로 평가·교체를 정한다.
 
 ## 속도와 전원 (Jetson Nano 5W, micro-USB, 측정 보고)
 
