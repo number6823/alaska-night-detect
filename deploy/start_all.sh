@@ -7,7 +7,7 @@
 #     PYTHON=python3                  파이썬 실행 파일
 #     SOURCE=0                        runner 의 입력(카메라 번호, 영상 파일, rtsp 주소). 설정 화면이 저장한 값이 있으면 그것이 우선
 #     MODEL=yolo11n.pt                감지 모델(.pt 또는 TensorRT .engine)
-#     IMGSZ=                          입력 크기(480, 640 등). 엔진을 만든 크기와 같게. 비우면 640
+#     IMGSZ=                          입력 크기(480, 640 등). 엔진을 만든 크기와 같게. 비우면 480
 #     HOST=0.0.0.0                    server 가 열리는 주소. 같은 와이파이의 폰이 보려면 0.0.0.0 (로그인이 없으니 신뢰하는 네트워크에서만)
 #     PORT=8000
 #     RUNNER_DIR=data/runner          runner 와 server 가 주고받는 폴더
@@ -31,7 +31,7 @@ else
   RUNNER_ARGS=(--data-dir "$RUNNER_DIR" --source "$SOURCE" --model "$MODEL")
 fi
 
-# 입력 크기: TensorRT 엔진은 만든 크기와 같게 준다(480 엔진이면 IMGSZ=480). 비워 두면 runner 기본값(640)을 쓴다.
+# 입력 크기: TensorRT 엔진은 만든 크기와 같게 준다(640 엔진이면 IMGSZ=640). 비워 두면 runner 기본값(480)을 쓴다.
 if [ -n "${IMGSZ:-}" ]; then RUNNER_ARGS+=(--imgsz "$IMGSZ"); fi
 
 # 실측 거리 기준값(calibration.json)이 있으면 runner 에 넘긴다. 안 넘기면 높이 70cm·기울기 15° 로 계산한 추정치를 쓴다.

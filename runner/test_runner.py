@@ -889,10 +889,10 @@ class PerClassConfTest(unittest.TestCase):
         from runner.control import apply_config_changes
 
         cfg = RunnerConfig(source="a.mp4")
-        res = apply_config_changes(cfg, {"min_conf_bicycle": 0.35, "imgsz": 480})
+        res = apply_config_changes(cfg, {"min_conf_bicycle": 0.35, "imgsz": 640})  # 기본이 480 이라 다른 값(640)을 준다
         self.assertEqual(res["applied"], ["min_conf_bicycle"])
         self.assertEqual(res["restart_required"], ["imgsz"])
-        self.assertEqual((cfg.min_conf_bicycle, cfg.imgsz), (0.35, 640))
+        self.assertEqual((cfg.min_conf_bicycle, cfg.imgsz), (0.35, 480))
 
 
 class AplayDeviceTest(unittest.TestCase):

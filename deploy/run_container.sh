@@ -8,7 +8,7 @@
 #   ALASKA_AUDIO_DEVICE  소리를 낼 ALSA 장치(예: plughw:1,0). 비우면 기본 장치. HDMI·보드 오디오는 기본이 아닐 수 있다
 #   PULSE_SERVER  본체 PulseAudio 주소(예: tcp:172.17.0.1:4713). 블루투스 스피커 소리를 컨테이너에서 본체로 보낼 때 준다. 비우면 안 넘긴다
 #   NAME   컨테이너 이름(기본 alaska_auto). 같은 이름이 있으면 지우고 새로 만든다
-#   IMGSZ  감지 입력 크기(예: 480, 640). TensorRT 엔진을 만든 크기와 같게 준다. 비우면 runner 기본값(640)
+#   IMGSZ  감지 입력 크기(예: 480, 640). TensorRT 엔진을 만든 크기와 같게 준다. 비우면 runner 기본값(480)
 #   CAMERA 카메라 장치(기본 /dev/video0). 장치가 없으면 연결하지 않는다. 그때는 SOURCE=<영상 파일> 로 시험한다
 #
 # 주의: 이 스크립트는 Jetson 에서 아직 시험하지 못했다. 이미지의 파이썬 버전, GPU 실행 옵션(--runtime nvidia),

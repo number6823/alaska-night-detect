@@ -24,8 +24,9 @@ class RunnerConfig:
     min_conf: float = 0.25
     # 자전거만 따로 높은 신뢰도 기준을 쓸 때(비우면 min_conf). Jetson 시험에서 자전거 오검출이 낮은 신뢰도에 몰렸다
     min_conf_bicycle: Optional[float] = None
-    # 감지 입력 크기. TensorRT 엔진은 만든 크기 그대로 써야 한다(480 엔진이면 480). 작을수록 빠르다
-    imgsz: int = 640
+    # 감지 입력 크기. TensorRT 엔진은 만든 크기 그대로 써야 한다(480 엔진이면 480). 작을수록 빠르다.
+    # 기본은 480: Jetson Nano 가 구형·소형이라 640 을 쓸 수 없다(2026-11-20). 640 은 PC 평가에서만 쓴다
+    imgsz: int = 480
     # 거리 기준값: calibration 파일이 있으면 그것을, 없으면 높이·기울기·화각으로 계산한 추정치를 쓴다
     calibration: Optional[str] = None
     camera_height_m: float = 0.7

@@ -54,7 +54,7 @@ def main() -> None:
         "--source", help="영상 파일, 카메라 번호(0, 1...), 또는 rtsp:// http:// 주소"
     )
     p.add_argument("--model", help="YOLO 가중치(.pt) 또는 TensorRT 엔진(.engine)")
-    p.add_argument("--imgsz", type=int, help="감지 입력 크기(640, 480...). TensorRT 엔진은 만든 크기 그대로")
+    p.add_argument("--imgsz", type=int, help="감지 입력 크기(기본 480, 640...). TensorRT 엔진은 만든 크기 그대로")
     p.add_argument(
         "--min-conf-bicycle",
         type=float,
