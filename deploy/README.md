@@ -47,7 +47,7 @@ NAME=alaska_auto IMGSZ=480 ALASKA_AUDIO_DEVICE=pulse PULSE_SERVER=tcp:172.17.0.1
 docker logs -f alaska_auto
 ```
 
-로그에서 확인할 것: `거리 기준값: ...`, `모델을 올리는 중이다(...)`, 그 뒤 **"준비 완료" 소리**(올라가는 세 음). 이어서 노트북 브라우저에서 `http://<Jetson IP>:8000`을 연다. 녹화·시연용 화면은 `http://<Jetson IP>:8000/?view=demo`.
+로그에서 확인할 것: `거리 기준값: ...`, `모델을 올리는 중이다(...)`, 그 뒤 **"준비 완료" 소리**(올라가는 세 음). 이어서 노트북 브라우저에서 `http://<Jetson IP>:8000`을 연다. 이 주소가 운전자 화면(녹화·시연용)이고, 기록·오경보 관리 화면은 `http://<Jetson IP>:8000/admin`이다.
 
 ## 환경변수
 

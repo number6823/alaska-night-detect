@@ -14,7 +14,7 @@ python -m server --runner-dir data/runner --max-records 1000   # runner 와 주�
 ```
 
 - 기록은 `data/server/detections.db`, 캡처는 `data/server/shots/` 에 쌓입니다(레포에 올리지 않습니다).
-- `web/dist` 가 있으면 같은 주소에서 화면도 열립니다. 개발 중에는 `web/` 에서 `npm run dev` 를 하면 `/api` 요청이 이 서버(8000)로 넘어갑니다.
+- `web/dist` 가 있으면 같은 주소에서 화면도 열립니다. `/` 는 운전자 화면, `/admin` 은 관리자 화면입니다(같은 `index.html`을 주고 화면은 주소를 보고 정합니다. `/admin/` 은 `/admin` 으로 돌립니다). 개발 중에는 `web/` 에서 `npm run dev` 를 하면 `/api` 요청이 이 서버(8000)로 넘어갑니다.
 - **로그인이 없습니다.** 시연 노트북이나 Jetson 안에서, 신뢰하는 네트워크에서만 엽니다. 인터넷에 열려면 먼저 인증을 붙입니다.
 
 ## API (`web/README.md` 의 약속과 같습니다)

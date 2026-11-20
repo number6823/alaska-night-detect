@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -324,6 +324,18 @@ def create_app(
 
     dist_dir = Path(web_dist) if web_dist else Path("web/dist")
     if dist_dir.is_dir():
+        index = dist_dir / "index.html"
+        if index.is_file():
+            # / 는 운전자 화면, /admin 은 관리자 화면. 같은 index.html 을 주고 화면은 주소를 보고 정한다.
+            @app.get("/admin", include_in_schema=False)
+            def admin_page():
+                return FileResponse(str(index))
+
+            @app.get("/admin/", include_in_schema=False)
+            def admin_page_slash():
+                # 뒤에 /가 붙으면 화면 파일의 상대 경로가 깨지므로 /admin 으로 돌린다
+                return RedirectResponse("/admin")
+
         # 반드시 API 경로를 다 등록한 뒤에 붙인다(먼저 붙이면 / 가 모든 경로를 가로챈다)
         app.mount("/", StaticFiles(directory=str(dist_dir), html=True), name="web")
 

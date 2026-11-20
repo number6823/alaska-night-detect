@@ -25,12 +25,12 @@ export async function fetchDetections(): Promise<DetectionsResult> {
 // 서버가 없으면 화면 안에서만 바뀐다.
 export async function flagDetection(id: string, flagged: boolean): Promise<boolean> {
   try {
-    await fetch(`/api/detections/${encodeURIComponent(id)}`, {
+    const res = await fetch(`/api/detections/${encodeURIComponent(id)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ false_alarm: flagged }),
     });
-    return true;
+    return res.ok;
   } catch {
     return false;
   }

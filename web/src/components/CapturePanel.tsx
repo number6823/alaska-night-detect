@@ -1,4 +1,4 @@
-import { BEEP } from "../kinds.ts";
+import { BEEP, LEVEL_NAME } from "../kinds.ts";
 import type { Detection } from "../types.ts";
 
 interface Props {
@@ -30,7 +30,7 @@ export default function CapturePanel({ rec }: Props) {
           )}
           {rec.level > 0 && (
             <span className="beep" data-level={rec.level}>
-              {BEEP[rec.level as 1 | 2 | 3]}&nbsp;&nbsp;단계 {rec.level}
+              {BEEP[rec.level as 1 | 2 | 3]}&nbsp;&nbsp;{LEVEL_NAME[rec.level]}
             </span>
           )}
           <span className="stamp">{rec.at}</span>

@@ -1,9 +1,14 @@
-import { useState } from "react";
-import { BEEP, kindOf } from "../kinds.ts";
+import { useLayoutEffect, useRef, useState } from "react";
+import { BEEP, LEVEL_NAME, kindOf } from "../kinds.ts";
 import Filters from "./Filters.tsx";
+import JudgeTable, { JUDGE_TIP } from "./JudgeTable.tsx";
 import type { Detection, Filter } from "../types.ts";
 
-const PAGE_SIZE = 10;
+// 한 쪽에 몇 건을 보여 줄지는 표가 들어갈 칸의 높이로 정한다(화면을 스크롤하지 않고 한눈에 보이게).
+const MIN_ROWS = 3;
+const MAX_ROWS = 12;
+const FALLBACK_ROW_PX = 40;
+const FALLBACK_HEAD_PX = 36;
 
 // 페이지 번호 줄: 처음과 끝, 현재 쪽 주변 두 쪽씩만 보이고 나머지는 "…"로 줄인다. 예) 1 … 4 5 6 7 8 … 20
 function pageList(cur: number, pages: number): (number | "…")[] {
@@ -26,10 +31,14 @@ interface Props {
   onSelect: (id: string) => void;
   flagged: Set<string>;
   onFlag: (id: string) => void;
+  /** 서버에 연결돼 있는데 오경보 표시를 저장하지 못했을 때 */
+  saveError?: boolean;
+  /** 서버가 없어 예시 기록을 보여 주는 중 */
+  example?: boolean;
 }
 
 export default function RecordTable({
-  rows, filter, onFilter, selectedId, onSelect, flagged, onFlag,
+  rows, filter, onFilter, selectedId, onSelect, flagged, onFlag, saveError, example,
 }: Props) {
   const shown = rows.filter((r) => {
     if (filter === "all") return true;
@@ -38,11 +47,32 @@ export default function RecordTable({
     return r.bicycle > 0;
   });
 
-  // 한 쪽에 10건씩. 새 기록이 계속 들어와 건수가 바뀌어도 쪽 번호가 범위를 벗어나지 않게 맞춘다.
+  // 표 칸의 높이에 맞춰 한 쪽 건수를 정한다. 칸이 커지거나 줄면 다시 계산한다.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [pageSize, setPageSize] = useState(6);
+  const hasRows = shown.length > 0; // 첫 기록이 들어와 실제 줄 높이를 잴 수 있게 되면 다시 계산한다
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const calc = () => {
+      // 좁거나 낮은 화면에서는 표가 칸에 갇히지 않고(페이지가 스크롤됨) 내용만큼 늘어나므로 고정 건수를 쓴다.
+      if (getComputedStyle(el).flexGrow === "0") { setPageSize(6); return; }
+      const head = el.querySelector("thead")?.getBoundingClientRect().height || FALLBACK_HEAD_PX;
+      const row = el.querySelector("tbody tr.row")?.getBoundingClientRect().height || FALLBACK_ROW_PX;
+      const n = Math.floor((el.clientHeight - head - 2) / row);
+      setPageSize(Math.max(MIN_ROWS, Math.min(MAX_ROWS, n)));
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [hasRows]);
+
+  // 새 기록이 계속 들어와 건수가 바뀌어도 쪽 번호가 범위를 벗어나지 않게 맞춘다.
   const [page, setPage] = useState(1);
-  const pages = Math.max(1, Math.ceil(shown.length / PAGE_SIZE));
+  const pages = Math.max(1, Math.ceil(shown.length / pageSize));
   const cur = Math.min(page, pages);
-  const pageRows = shown.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
+  const pageRows = shown.slice((cur - 1) * pageSize, cur * pageSize);
 
   return (
     <section className="panel">
@@ -51,39 +81,31 @@ export default function RecordTable({
         <Filters value={filter} onChange={(f) => { onFilter(f); setPage(1); }} />
       </header>
       <div className="hint">
-        <p>
-          경보가 잘못 울렸다면(사람·자전거가 <b>없는데</b> 울림) <b>오경보로 표시</b>하세요. 서버 DB(SQLite)에 저장되어
-          오경보율 계산에 쓰이고, 자동 삭제되지 않습니다. 사람이 실제로 있는 기록은 표시하지 마세요.
-        </p>
-        <p>
+        {example && (
+          <p className="hint-warn">
+            <b>예시 기록입니다.</b> Jetson에 연결되지 않아 Wikimedia Commons 야간 사진에 모델을 돌린 결과를 보여 줍니다(시각·거리·경고 단계는 만든 값).
+          </p>
+        )}
+        {saveError && (
+          <p className="hint-warn"><b>서버에 저장하지 못했습니다.</b> 표시가 이 화면에만 남습니다. 서버 상태를 확인하세요.</p>
+        )}
+        <p className="hint-row">
+          <span>경보가 잘못 울렸다면 <b>오경보로 표시</b>하세요.</span>
           {flagged.size > 0 ? (
             <a className="export" href="/api/export/false-alarms" download>
               오경보 {flagged.size}건 내보내기 (zip)
             </a>
           ) : (
-            <span className="export off">오경보 내보내기 (zip) — 표시한 기록이 없습니다</span>
-          )}{" "}
-          <span className="hint-sub">
-            zip = 박스 없는 원본 사진 + 빈 라벨(사람·자전거 없음) + 목록. 재학습 때 “이건 사람이 아니다”를 가르치는 배경 자료로 추가합니다.
-          </span>
+            <span className="export off">내보내기 (zip) · 표시한 기록 없음</span>
+          )}
         </p>
       </div>
       <details className="guide">
         <summary>무엇을 오경보로 표시하나요?</summary>
-        <p className="guide-note">
-          사진의 박스는 <b>모델의 예측</b>이고 정답이 아닙니다. 신뢰도는 오경보 여부가 아니라 의심 후보를 찾는 용도이며,
-          최종 판단은 캡처 사진을 직접 보고 합니다.
-        </p>
-        <table className="guide-table">
-          <tbody>
-            <tr><td><b>오경보로 표시</b></td><td>사람·자전거가 <b>없는데</b> 박스가 있음 (나무, 가로등, 차 불빛, 기둥)</td></tr>
-            <tr><td>표시 안 함</td><td>사람이 있고 박스가 맞음 — 신뢰도가 낮아도 사람이 맞으면 정상 경보입니다</td></tr>
-            <tr><td>표시 안 함</td><td>사람은 있는데 엉뚱한 곳에 박스가 하나 더 있음 — 빈 라벨이 사람을 “없다”고 가르치게 됩니다</td></tr>
-            <tr><td>표시 안 함</td><td>자전거 탄 사람인데 사람만 잡힘 — 오경보가 아니라 <b>미탐</b>이라 다른 방법(라벨링)이 필요합니다</td></tr>
-          </tbody>
-        </table>
+        <JudgeTable />
+        <p className="guide-note">{JUDGE_TIP}</p>
       </details>
-      <div className="tablewrap">
+      <div className="tablewrap" ref={wrapRef}>
         <table>
           <thead>
             <tr>
@@ -118,7 +140,7 @@ export default function RecordTable({
                   </td>
                   <td>
                     <span className="lv" data-level={r.level}>
-                      {r.level ? `${BEEP[r.level as 1 | 2 | 3]} ${r.level}` : "—"}
+                      {r.level ? `${BEEP[r.level as 1 | 2 | 3]} ${LEVEL_NAME[r.level].replace("약 ", "")}` : "—"}
                     </span>
                   </td>
                   <td className={low ? "conf low" : "conf"}>{r.top ? r.top.toFixed(2) : "—"}</td>
@@ -131,7 +153,7 @@ export default function RecordTable({
                       title={isFlagged ? "오경보 표시를 취소합니다" : "이 경보가 잘못 울렸다고 서버에 남깁니다"}
                       onClick={(e) => { e.stopPropagation(); onFlag(r.id); }}
                     >
-                      {isFlagged ? "오경보" : "오경보로 표시"}
+                      {isFlagged ? "표시 취소" : "오경보로 표시"}
                     </button>
                   </td>
                 </tr>
@@ -141,23 +163,26 @@ export default function RecordTable({
         </table>
       </div>
       <nav className="pager" aria-label="기록 페이지">
-        <button type="button" className="pg" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ 이전</button>
-        {pageList(cur, pages).map((p, i) =>
-          p === "…" ? (
-            <span className="pg-gap" key={`gap${i}`}>…</span>
-          ) : (
-            <button
-              type="button"
-              className="pg"
-              key={p}
-              aria-current={p === cur ? "page" : undefined}
-              onClick={() => setPage(p)}
-            >
-              {p}
-            </button>
-          )
-        )}
-        <button type="button" className="pg" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>다음 ›</button>
+        <span aria-hidden="true" />
+        <div className="pg-nums">
+          <button type="button" className="pg" disabled={cur <= 1} onClick={() => setPage(cur - 1)}>‹ 이전</button>
+          {pageList(cur, pages).map((p, i) =>
+            p === "…" ? (
+              <span className="pg-gap" key={`gap${i}`}>…</span>
+            ) : (
+              <button
+                type="button"
+                className="pg"
+                key={p}
+                aria-current={p === cur ? "page" : undefined}
+                onClick={() => setPage(p)}
+              >
+                {p}
+              </button>
+            )
+          )}
+          <button type="button" className="pg" disabled={cur >= pages} onClick={() => setPage(cur + 1)}>다음 ›</button>
+        </div>
         <span className="pg-total">총 {shown.length}건 · {cur}/{pages}쪽</span>
       </nav>
     </section>
