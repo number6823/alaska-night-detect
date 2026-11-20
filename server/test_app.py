@@ -129,6 +129,17 @@ class ServerTest(unittest.TestCase):
         self.assertIn("화면", client.get("/").text)
         self.assertEqual(client.get("/api/health").json()["ok"], True)
 
+    def test_admin_path_serves_same_page_and_slash_redirects(self):
+        dist = self.root / "dist_admin"
+        dist.mkdir()
+        (dist / "index.html").write_text("<html>화면</html>", encoding="utf-8")
+        client = TestClient(create_app(str(self.root / "srv3"), web_dist=str(dist)))
+        self.assertIn("화면", client.get("/admin").text)
+        r = client.get("/admin/", follow_redirects=False)
+        self.assertIn(r.status_code, (302, 307))
+        self.assertEqual(r.headers["location"], "/admin")
+        self.assertEqual(client.get("/api/health").json()["ok"], True)
+
 
 class RawAndExportTest(unittest.TestCase):
     """원본 프레임 저장, 오경보 기록 보호, 재학습 자료 내보내기."""
