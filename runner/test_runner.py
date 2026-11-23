@@ -3,6 +3,7 @@
 모델·카메라·서버·스피커는 가짜로 바꿔 끼워서 로직만 확인한다(ultralytics 를 불러오지 않는다).
 """
 
+import contextlib
 import io
 import json
 import tempfile
@@ -18,6 +19,7 @@ from alarm.levels import Calibration
 from runner.app import run
 from runner.config import RunnerConfig, build_config, load_config_file
 from runner.pipeline import LEVEL_DISTANCE_M, Pipeline
+from runner import sound
 from runner.sound import PATTERNS, Beeper, pattern_duration_s, pattern_wav
 from runner.sources import VideoSource, parse_source
 from runner.spool import Reporter, Spool
@@ -192,6 +194,37 @@ class SoundTest(unittest.TestCase):
             time.sleep(0.2)
         finally:
             b.close()
+
+
+class SoundFailureLogTest(unittest.TestCase):
+    """소리 재생이 실패하면 이유를 표준 오류에 남긴다(예전에는 조용히 삼켜서 원인을 못 찾았다)."""
+
+    def setUp(self):
+        sound._LAST_WARN.clear()
+
+    def test_worker_failure_is_logged_once_in_a_row(self):
+        def boom(_):
+            raise OSError(12, "Cannot allocate memory")
+
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            b = Beeper(player=boom, clock=lambda: 0.0)
+            try:
+                for lvl in (1, 2, 3):
+                    b.update(lvl)
+                    time.sleep(0.15)
+            finally:
+                b.close()
+        lines = [ln for ln in err.getvalue().splitlines() if ln.startswith("[sound]")]
+        self.assertEqual(len(lines), 1)  # 같은 종류는 한 번만
+        self.assertIn("Cannot allocate memory", lines[0])
+
+    def test_warn_repeats_after_interval(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            sound._warn("k", "첫째", every_s=0.0)
+            sound._warn("k", "둘째", every_s=0.0)
+        self.assertEqual(err.getvalue().count("[sound]"), 2)
 
 
 class SourceTest(unittest.TestCase):

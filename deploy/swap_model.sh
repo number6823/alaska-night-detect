@@ -19,7 +19,8 @@
 # 순서와 이유:
 #   ① 컨테이너를 멈춘다: Jetson Nano 는 메모리가 4GB 라서 runner 가 켜져 있으면 엔진 변환이 메모리가 모자랄 수 있다.
 #   ② 같은 이미지로 변환 전용 컨테이너를 잠깐 띄워 클래스 순서(person=0, bicycle=1)를 확인하고 엔진을 만든다.
-#   ③ config.json 을 백업(config.json.bak_<시각>)한 뒤 model 과 imgsz 만 바꾼다. 다른 설정은 건드리지 않는다.
+#   ③ config.json 을 백업(config.json.bak_<시각>)하고 직전 설정(config.json.prev)으로도 남긴 뒤 model 과 imgsz 만 바꾼다. 다른 설정은 건드리지 않는다.
+#      --rollback 은 config.json.prev(직전 교체 한 번)로 되돌린다. bak_<시각> 은 기록용이다.
 #   ④ 컨테이너를 다시 켜고 /api/status 가 running 이 될 때까지 기다린다. 실패하면 백업으로 되돌린다.
 set -u
 
@@ -36,7 +37,12 @@ MODELS="$REPO/models"
 say() { echo "[$(date +%T)] $*"; }
 run() { if [ "$DRY_RUN" = "1" ]; then echo "  (DRY_RUN) $*"; else "$@"; fi; }
 
-latest_backup() { ls -1t "$CFG".bak_* 2>/dev/null | head -n 1; }
+# 되돌릴 설정: 직전 교체 때 만든 config.json.prev 를 우선 쓴다. Jetson 은 재부팅하면 시계가 옛날로 풀려서
+# 백업 파일의 이름·수정 시각 순서가 뒤바뀔 수 있다(2026-11-23 리허설에서 640 설정으로 잘못 돌아감). .prev 는 시계와 상관없다.
+# .prev 가 없을 때만(이 방식 이전에 교체한 경우) 수정 시각이 가장 최근인 백업을 쓴다.
+latest_backup() {
+  if [ -f "$CFG.prev" ]; then echo "$CFG.prev"; else ls -1t "$CFG".bak_* 2>/dev/null | head -n 1; fi
+}
 
 wait_ready() {  # running 이 되고 runner 가 켜져 있다고 나올 때까지 기다린다
   local t0=$SECONDS
@@ -53,6 +59,7 @@ restore_and_restart() {
   local bak; bak="$(latest_backup)"
   [ -n "$bak" ] || { say "되돌릴 백업이 없다"; return 1; }
   say "되돌린다: $bak → $CFG"
+  [ "$DRY_RUN" = "1" ] || grep -E '"(model|imgsz)"' "$bak" | sed 's/^/  되돌릴 설정:/'   # 어느 모델로 돌아가는지 눈으로 확인
   run cp "$bak" "$CFG"
   run docker restart "$NAME" >/dev/null
   if [ "$DRY_RUN" != "1" ] && wait_ready; then say "이전 모델로 돌아왔다"; else say "되돌린 뒤에도 준비되지 않았다. docker logs $NAME 확인"; fi
@@ -102,6 +109,7 @@ say "엔진 변환 시간: $(( SECONDS - T0 ))초"
 say "③ config.json 백업 후 model·imgsz 교체"
 BAK="$CFG.bak_$(date +%Y%m%d_%H%M%S)"
 run cp "$CFG" "$BAK"
+run cp "$CFG" "$CFG.prev"   # --rollback 이 쓰는 "직전 설정". 교체할 때마다 덮어쓴다(시계와 상관없음)
 # config.json 을 고칠 파이썬: python3 우선, 안 되면 python (Jetson 본체는 보통 python3)
 PY=""
 for c in python3 python; do
