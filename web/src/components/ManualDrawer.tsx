@@ -50,7 +50,7 @@ export default function ManualDrawer({ onClose }: Props) {
           <li>Roboflow에 <b>이미지만</b> 업로드(라벨 txt는 올리지 않음).</li>
           <li><b>Mark Null</b>(빈 프레임)로 처리해 Dataset에 넣기.</li>
           <li>새 Version은 이전과 같게(클래스 정리, Auto-Orient만, 증강 없음).</li>
-          <li>같은 설정으로 학습(yolo11n, 640, 100 epochs).</li>
+          <li>같은 설정으로 학습(yolo11n, 480, 100 epochs).</li>
           <li>효과 확인 — 빈 구간 오경보 시간이 줄었는지, 경보 놓침이 0인지.</li>
         </ol>
         <p className="drawer-tip">명령과 자세한 순서: <code>docs/false-alarm-retraining.md</code></p>

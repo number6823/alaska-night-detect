@@ -52,16 +52,16 @@ python -m training.blur_for_upload --src <압축 푼 images 폴더> --out <모�
 
 ## 5. 새 Version과 학습
 
-이전 Version과 같게 한다: Modify Classes(pedestrian·People→person, Bicycle→bicycle, 나머지 제외), Auto-Orient만, 증강 없음. 학습은 같은 설정으로 한다(yolo11n, 640, 100 epochs, patience 20, seed 0).
+이전 Version과 같게 한다: Modify Classes(pedestrian·People→person, Bicycle→bicycle, 나머지 제외), Auto-Orient만, 증강 없음. 학습은 같은 설정으로 한다(yolo11n, 480, 100 epochs, patience 20, seed 0). 입력 480은 Jetson이 쓰는 크기와 같다..
 
 배경 사진 비율의 기준은 이 프로젝트에서 검증하지 않았다. 처음에는 20~50장으로 시험하고 효과를 보고 늘린다.
 
 ## 6. 효과 확인
 
-같은 평가 영상과 이벤트 CSV로 학습 전후를 비교한다.
+같은 평가 영상과 이벤트 CSV로 학습 전후를 비교한다. 입력 크기(`--imgsz`)도 전후가 **같아야** 한다(예전 640 결과와 480 결과를 섞어 비교하지 않는다).
 
 ```
-python -m runner.events dump --source <영상> --model <새 모델> --imgsz 640 --out data/events/<이름>.boxes.json
+python -m runner.events dump --source <영상> --model <새 모델> --imgsz 480 --out data/events/<이름>.boxes.json
 python -m runner.events eval --boxes data/events/<이름>.boxes.json --events <이벤트 CSV> --calibration data/runner/calibration.json --sweep
 ```
 
