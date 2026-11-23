@@ -31,6 +31,27 @@ PATTERNS = {
 }
 
 
+_LAST_WARN: dict = {}
+
+
+def _warn(key: str, message: str, every_s: float = 60.0) -> None:
+    """소리 재생이 실패한 이유를 표준 오류에 한 줄 남긴다. 같은 종류는 every_s 초에 한 번만(로그가 넘치지 않게).
+
+    예전에는 예외를 조용히 삼켜서 "소리가 안 난다"는 것만 알고 이유를 몰랐다
+    (2026-11-23 Jetson: aplay 실행이 OSError 12 메모리 부족으로 실패했는데 로그에 없었다).
+    """
+    now = time.monotonic()
+    last = _LAST_WARN.get(key)
+    if last is not None and now - last < every_s:
+        return
+    _LAST_WARN[key] = now
+    try:
+        sys.stderr.write("[sound] " + message + "\n")
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+
 def tone_samples(freq: float, seconds: float, volume: float = 0.6) -> List[int]:
     n = int(SAMPLE_RATE * seconds)
     fade = max(
@@ -117,13 +138,15 @@ def play_wav(data: bytes) -> bool:
 
             winsound.PlaySound(data, winsound.SND_MEMORY)
             return True
-        except Exception:
+        except Exception as exc:
+            _warn("winsound", "winsound 재생 실패: %r" % (exc,))
             return False
     if shutil.which("aplay"):
         try:
             subprocess.run(aplay_command(), input=data, check=True, timeout=10)
             return True
-        except Exception:
+        except Exception as exc:
+            _warn("aplay", "aplay 재생 실패: %r (메모리 부족이면 vm.overcommit_memory=1, 장치 문제면 ALASKA_AUDIO_DEVICE 확인)" % (exc,))
             return False
     sys.stdout.write("\a")
     sys.stdout.flush()
@@ -213,8 +236,8 @@ class Beeper:
             self._busy.set()
             try:
                 self._player(self._wavs[level])
-            except Exception:
-                pass  # 소리가 안 나도 감지는 계속된다
+            except Exception as exc:
+                _warn("worker", "소리 재생 중 오류: %r" % (exc,))  # 소리가 안 나도 감지는 계속된다
             finally:
                 self._busy.clear()
 
